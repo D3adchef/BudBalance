@@ -8,13 +8,20 @@ export default function ToolsPage() {
   const plannerData = getPlannerData(purchases)
 
   return (
-    <div className="space-y-5">
-      <div>
-        <p className="text-sm text-slate-400">BudBalance</p>
-        <h1 className="mt-1 text-2xl font-bold">Smart Purchase Planner</h1>
+    <div className="space-y-4">
+      <div className="px-1">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
+          BudBalance
+        </p>
+        <h1 className="mt-1 text-lg font-semibold text-white">
+          Smart Purchase Planner
+        </h1>
+        <p className="mt-1 text-xs text-slate-400">
+          Estimate what you can buy now and what is returning soon.
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4">
+      <div className="grid grid-cols-1 gap-3">
         <PlannerResultCard
           title="Safe to Buy Right Now"
           value={`${plannerData.safeToBuyNow}g`}
@@ -35,48 +42,61 @@ export default function ToolsPage() {
       </div>
 
       <SectionCard title="Planner Forecast">
-        <div className="space-y-3 text-sm text-slate-300">
-          {plannerData.upcomingRollOffs.length > 0 ? (
-            <>
-              <p>
+        {plannerData.upcomingRollOffs.length > 0 ? (
+          <div className="grid gap-2">
+            <div className="rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-3">
+              <p className="text-sm text-slate-200">
                 You can safely purchase up to {plannerData.safeToBuyNow}g right now.
               </p>
-              <p>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-3">
+              <p className="text-sm text-slate-200">
                 Your next return of +{plannerData.nextReturnAmount}g is expected on{" "}
                 {plannerData.nextReturnDate}.
               </p>
-              <p>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-3">
+              <p className="text-sm text-slate-200">
                 Across your next two returns, approximately +{plannerData.projectedGainSoon}g
                 should return to your balance.
               </p>
-            </>
-          ) : (
-            <p>No planner forecast is available because there are no active purchases in the current window.</p>
-          )}
-        </div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-4 text-sm text-slate-400">
+            No planner forecast is available because there are no active purchases in the current window.
+          </div>
+        )}
       </SectionCard>
 
       <SectionCard title="Upcoming Return Schedule">
-        <div className="space-y-3">
-          {plannerData.upcomingRollOffs.length > 0 ? (
-            plannerData.upcomingRollOffs.slice(0, 5).map((item) => (
+        {plannerData.upcomingRollOffs.length > 0 ? (
+          <div className="space-y-2">
+            {plannerData.upcomingRollOffs.slice(0, 5).map((item) => (
               <div
                 key={item.id}
-                className="flex items-center justify-between border-b border-slate-700 pb-2 last:border-b-0"
+                className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-3"
               >
-                <div>
-                  <p className="text-slate-300">{item.productName}</p>
-                  <p className="text-xs text-slate-500">{item.rollOffDate}</p>
+                <div className="min-w-0 pr-3">
+                  <p className="truncate text-sm font-medium text-white">
+                    {item.productName}
+                  </p>
+                  <p className="text-[11px] text-slate-400">{item.rollOffDate}</p>
                 </div>
-                <span className="font-semibold text-emerald-400">
+
+                <span className="shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-400">
                   +{item.grams}g
                 </span>
               </div>
-            ))
-          ) : (
-            <p className="text-sm text-slate-400">No upcoming returns found.</p>
-          )}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-4 text-sm text-slate-400">
+            No upcoming returns found.
+          </div>
+        )}
       </SectionCard>
     </div>
   )

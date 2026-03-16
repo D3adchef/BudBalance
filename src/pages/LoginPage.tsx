@@ -23,55 +23,82 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-slate-950 text-white">
+    <div className="flex min-h-screen items-center justify-center bg-black px-4 text-white">
       <form
         onSubmit={handleSubmit}
-        className="bg-slate-900 p-8 rounded-xl w-80 space-y-5 shadow-lg"
+        className="w-full max-w-sm space-y-5 rounded-3xl border border-white/10 bg-slate-950/95 p-6 shadow-[0_0_40px_rgba(0,0,0,0.55)]"
       >
-        <h1 className="text-xl font-bold text-center">BudBalance Login</h1>
+        <div className="text-center">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
+            BudBalance
+          </p>
+
+          <h1 className="mt-2 text-lg font-semibold text-white">
+            Account Login
+          </h1>
+
+          <p className="mt-1 text-xs text-slate-400">
+            Sign in to access your allotment tracker.
+          </p>
+        </div>
 
         {/* Username */}
-        <input
-          type="text"
-          placeholder="Username"
-          className="w-full p-2 rounded bg-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-        />
+        <div>
+          <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
+            Username
+          </label>
 
-        {/* Password */}
-        <div className="relative">
           <input
-            type={showPassword ? "text" : "password"}
-            placeholder="Password"
-            className="w-full p-2 rounded bg-slate-800 pr-10 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            type="text"
+            placeholder="Enter username"
+            className="w-full rounded-2xl border border-white/10 bg-slate-900 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
             required
           />
+        </div>
 
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-2 top-2 text-sm opacity-70 hover:opacity-100"
-          >
-            {showPassword ? "🙈" : "👁️"}
-          </button>
+        {/* Password */}
+        <div>
+          <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
+            Password
+          </label>
+
+          <div className="relative">
+            <input
+              type={showPassword ? "text" : "password"}
+              placeholder="Enter password"
+              className="w-full rounded-2xl border border-white/10 bg-slate-900 px-3 py-3 pr-10 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-3 text-sm opacity-70 transition hover:opacity-100"
+            >
+              {showPassword ? "🙈" : "👁️"}
+            </button>
+          </div>
         </div>
 
         {/* Login Button */}
         <button
           type="submit"
-          className="w-full bg-emerald-600 hover:bg-emerald-500 transition p-2 rounded font-semibold"
+          className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.97]"
         >
           Login
         </button>
 
         {/* Signup Link */}
         <p className="text-center text-sm text-slate-400">
-          Don't have an account?{" "}
-          <Link to="/signup" className="text-emerald-400 hover:underline">
+          Don’t have an account?{" "}
+          <Link
+            to="/signup"
+            className="font-medium text-emerald-400 transition hover:text-emerald-300"
+          >
             Create one
           </Link>
         </p>

@@ -162,31 +162,42 @@ export default function AddPurchasePage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <p className="text-sm text-slate-400">BudBalance</p>
-        <h2 className="mt-1 text-xl font-semibold text-white">Add Purchase</h2>
+    <div className="space-y-4">
+      <div className="px-1">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
+          BudBalance
+        </p>
+        <h2 className="mt-1 text-lg font-semibold text-white">Add Purchase</h2>
+        <p className="mt-1 text-xs text-slate-400">
+          Capture a receipt or enter purchase details manually.
+        </p>
       </div>
 
-      <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900 p-4">
-        <div>
-          <h3 className="text-base font-semibold text-white">Smart Scan</h3>
-          <p className="mt-1 text-sm text-slate-400">
-            Use your camera or upload a receipt/package photo, then confirm the
-            purchase details below.
-          </p>
+      <div className="space-y-4 rounded-3xl border border-white/10 bg-slate-900/90 p-4 shadow-lg shadow-black/20">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-white">Smart Scan</h3>
+            <p className="mt-1 text-xs leading-5 text-slate-400">
+              Use your camera or upload a receipt/package photo, then confirm
+              the details below.
+            </p>
+          </div>
+
+          <div className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-400">
+            Optional
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2.5">
           <button
             type="button"
             onClick={startCamera}
-            className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
+            className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
           >
             Use Camera
           </button>
 
-          <label className="cursor-pointer rounded-xl bg-slate-800 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-slate-700">
+          <label className="cursor-pointer rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-white/10">
             Upload File
             <input
               type="file"
@@ -198,55 +209,55 @@ export default function AddPurchasePage() {
         </div>
 
         {cameraError && (
-          <p className="rounded-xl border border-red-900 bg-red-950/40 px-3 py-2 text-sm text-red-300">
+          <p className="rounded-2xl border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-300">
             {cameraError}
           </p>
         )}
 
         {cameraActive && (
-          <div className="space-y-3 rounded-2xl border border-slate-700 bg-slate-950 p-3">
-            <div className="overflow-hidden rounded-xl border border-slate-700 bg-black">
+          <div className="space-y-3 rounded-2xl border border-white/10 bg-slate-950 p-3">
+            <div className="overflow-hidden rounded-2xl border border-white/10 bg-black">
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
                 muted
-                className="block w-full"
+                className="block max-h-[300px] w-full object-cover"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               <button
                 type="button"
                 onClick={capturePhoto}
-                className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
               >
-                Capture Photo
+                Capture
               </button>
 
               <button
                 type="button"
                 onClick={stopCamera}
-                className="rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
               >
-                Cancel Camera
+                Cancel
               </button>
             </div>
           </div>
         )}
 
         {receiptImage && (
-          <div className="space-y-3 rounded-2xl border border-slate-700 bg-slate-950 p-3">
+          <div className="space-y-3 rounded-2xl border border-white/10 bg-slate-950 p-3">
             <img
               src={receiptImage}
               alt="Receipt preview"
-              className="w-full rounded-xl border border-slate-700"
+              className="w-full rounded-2xl border border-white/10"
             />
 
             <button
               type="button"
               onClick={clearImage}
-              className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
+              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
             >
               Remove Image
             </button>
@@ -256,47 +267,87 @@ export default function AddPurchasePage() {
         <canvas ref={canvasRef} className="hidden" />
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <input
-          placeholder="Product Name"
-          value={productName}
-          onChange={(e) => setProductName(e.target.value)}
-          className="w-full rounded-xl border border-slate-800 bg-slate-800 p-3 text-white outline-none focus:border-emerald-500"
-        />
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="rounded-3xl border border-white/10 bg-slate-900/90 p-4 shadow-lg shadow-black/20">
+          <div className="mb-3">
+            <h3 className="text-sm font-semibold text-white">
+              Purchase Details
+            </h3>
+            <p className="mt-1 text-xs text-slate-400">
+              Required fields: product name, grams, and purchase date.
+            </p>
+          </div>
 
-        <input
-          placeholder="Grams"
-          type="number"
-          value={grams}
-          onChange={(e) => setGrams(e.target.value)}
-          className="w-full rounded-xl border border-slate-800 bg-slate-800 p-3 text-white outline-none focus:border-emerald-500"
-        />
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                Product Name
+              </label>
+              <input
+                placeholder="Enter product name"
+                value={productName}
+                onChange={(e) => setProductName(e.target.value)}
+                className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
+              />
+            </div>
 
-        <input
-          placeholder="Dispensary"
-          value={dispensary}
-          onChange={(e) => setDispensary(e.target.value)}
-          className="w-full rounded-xl border border-slate-800 bg-slate-800 p-3 text-white outline-none focus:border-emerald-500"
-        />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                  Grams
+                </label>
+                <input
+                  placeholder="0.0"
+                  type="number"
+                  value={grams}
+                  onChange={(e) => setGrams(e.target.value)}
+                  className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
+                />
+              </div>
 
-        <input
-          type="date"
-          value={purchaseDate}
-          onChange={(e) => setPurchaseDate(e.target.value)}
-          className="w-full rounded-xl border border-slate-800 bg-slate-800 p-3 text-white outline-none focus:border-emerald-500"
-        />
+              <div>
+                <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                  Purchase Date
+                </label>
+                <input
+                  type="date"
+                  value={purchaseDate}
+                  onChange={(e) => setPurchaseDate(e.target.value)}
+                  className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                />
+              </div>
+            </div>
 
-        <textarea
-          placeholder="Notes"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          className="w-full rounded-xl border border-slate-800 bg-slate-800 p-3 text-white outline-none focus:border-emerald-500"
-          rows={4}
-        />
+            <div>
+              <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                Dispensary
+              </label>
+              <input
+                placeholder="Optional dispensary name"
+                value={dispensary}
+                onChange={(e) => setDispensary(e.target.value)}
+                className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                Notes
+              </label>
+              <textarea
+                placeholder="Optional notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
+                rows={3}
+              />
+            </div>
+          </div>
+        </div>
 
         <button
           type="submit"
-          className="w-full rounded-xl bg-emerald-600 p-3 font-semibold text-white transition hover:bg-emerald-500"
+          className="w-full rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
         >
           Save Purchase
         </button>

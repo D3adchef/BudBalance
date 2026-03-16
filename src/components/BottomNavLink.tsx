@@ -15,17 +15,18 @@ export default function BottomNavLink({
   return (
     <NavLink
       to={to}
+      aria-label={label}
+      title={label}
       className={({ isActive }) =>
         [
-          "flex flex-col items-center justify-center gap-1 rounded-2xl px-3 py-2 text-[11px] font-medium transition min-w-[64px]",
+          "flex h-12 w-12 items-center justify-center rounded-2xl transition duration-200",
           isActive
-            ? "bg-emerald-500/15 text-emerald-400"
-            : "text-slate-400 hover:text-white hover:bg-slate-800/80",
+            ? "bg-emerald-500/15 text-emerald-400 shadow-[0_0_18px_rgba(52,211,153,0.16)] ring-1 ring-emerald-400/20"
+            : "text-slate-400 hover:bg-white/5 hover:text-white active:scale-[0.96]",
         ].join(" ")
       }
     >
-      <span className="text-lg leading-none">{icon}</span>
-      <span>{label}</span>
+      <span className="text-xl leading-none">{icon}</span>
     </NavLink>
   )
 }
