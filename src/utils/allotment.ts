@@ -1,6 +1,6 @@
 import type { Purchase } from "../features/purchases/purchaseStore"
 
-const ALLOTMENT_LIMIT = 84
+const ALLOTMENT_LIMIT = 84.03
 const WINDOW_DAYS = 31
 
 function parseDate(dateString: string) {
@@ -10,6 +10,17 @@ function parseDate(dateString: string) {
 function differenceInDays(from: Date, to: Date) {
   const msPerDay = 1000 * 60 * 60 * 24
   return Math.floor((to.getTime() - from.getTime()) / msPerDay)
+}
+
+function roundToTwo(num: number) {
+  return Math.round(num * 100) / 100
+}
+
+function getPurchaseTotalGrams(purchase: Purchase) {
+  const items = Array.isArray(purchase.items) ? purchase.items : []
+  return roundToTwo(
+    items.reduce((total, item) => total + Number(item.grams || 0), 0)
+  )
 }
 
 export function getActivePurchases(purchases: Purchase[]) {
@@ -23,15 +34,17 @@ export function getActivePurchases(purchases: Purchase[]) {
 }
 
 export function getUsedGrams(purchases: Purchase[]) {
-  return getActivePurchases(purchases).reduce(
-    (total, purchase) => total + purchase.grams,
-    0
+  return roundToTwo(
+    getActivePurchases(purchases).reduce(
+      (total, purchase) => total + getPurchaseTotalGrams(purchase),
+      0
+    )
   )
 }
 
 export function getRemainingGrams(purchases: Purchase[]) {
   const used = getUsedGrams(purchases)
-  return Math.max(ALLOTMENT_LIMIT - used, 0)
+  return roundToTwo(Math.max(ALLOTMENT_LIMIT - used, 0))
 }
 
 export function getUpcomingRollOffs(purchases: Purchase[]) {
@@ -43,8 +56,10 @@ export function getUpcomingRollOffs(purchases: Purchase[]) {
 
       return {
         id: purchase.id,
-        productName: purchase.productName,
-        grams: purchase.grams,
+        purchaseDate: purchase.purchaseDate,
+        dispensary: purchase.dispensary,
+        items: Array.isArray(purchase.items) ? purchase.items : [],
+        grams: getPurchaseTotalGrams(purchase),
         rollOffDate: rollOffDate.toISOString().split("T")[0],
       }
     })
@@ -55,6 +70,11 @@ export function getRecentPurchases(purchases: Purchase[], count = 3) {
   return [...purchases]
     .sort((a, b) => b.purchaseDate.localeCompare(a.purchaseDate))
     .slice(0, count)
+    .map((purchase) => ({
+      ...purchase,
+      items: Array.isArray(purchase.items) ? purchase.items : [],
+      grams: getPurchaseTotalGrams(purchase),
+    }))
 }
 
 export function getTimelineEntries(purchases: Purchase[]) {
@@ -74,8 +94,9 @@ export function getTimelineEntries(purchases: Purchase[]) {
       return {
         id: purchase.id,
         purchaseDate: purchase.purchaseDate,
-        productName: purchase.productName,
-        grams: purchase.grams,
+        dispensary: purchase.dispensary,
+        items: Array.isArray(purchase.items) ? purchase.items : [],
+        grams: getPurchaseTotalGrams(purchase),
         rollOffDate: rollOffDate.toISOString().split("T")[0],
         daysUntilRollOff,
         status: "Active Window",
@@ -91,9 +112,8 @@ export function getPlannerData(purchases: Purchase[]) {
   const nextReturn = upcomingRollOffs.length > 0 ? upcomingRollOffs[0] : null
 
   const nextTwoReturns = upcomingRollOffs.slice(0, 2)
-  const projectedGainSoon = nextTwoReturns.reduce(
-    (total, item) => total + item.grams,
-    0
+  const projectedGainSoon = roundToTwo(
+    nextTwoReturns.reduce((total, item) => total + item.grams, 0)
   )
 
   return {

@@ -1,9 +1,41 @@
+import { useMemo, useState } from "react"
 import PurchaseHistoryItem from "../components/PurchaseHistoryItem"
 import SectionCard from "../components/SectionCard"
 import { usePurchaseStore } from "../features/purchases/purchaseStore"
 
 export default function PurchaseHistoryPage() {
   const purchases = usePurchaseStore((state) => state.purchases)
+
+  const sortedPurchases = useMemo(() => {
+    return [...purchases].sort((a, b) => b.purchaseDate.localeCompare(a.purchaseDate))
+  }, [purchases])
+
+  const recentPurchases = sortedPurchases.slice(0, 3)
+  const olderPurchases = sortedPurchases.slice(3, 100)
+
+  const [openRecentIds, setOpenRecentIds] = useState<string[]>([])
+  const [selectedOlderId, setSelectedOlderId] = useState("")
+  const [isOlderOpen, setIsOlderOpen] = useState(false)
+
+  const selectedOlderPurchase =
+    olderPurchases.find((purchase) => purchase.id === selectedOlderId) ?? null
+
+  function toggleRecentPurchase(purchaseId: string) {
+    setOpenRecentIds((current) =>
+      current.includes(purchaseId)
+        ? current.filter((id) => id !== purchaseId)
+        : [...current, purchaseId]
+    )
+  }
+
+  function handleOlderSelection(purchaseId: string) {
+    setSelectedOlderId(purchaseId)
+    setIsOlderOpen(false)
+  }
+
+  function toggleOlderPurchase() {
+    setIsOlderOpen((current) => !current)
+  }
 
   return (
     <div className="space-y-4">
@@ -14,9 +46,6 @@ export default function PurchaseHistoryPage() {
         <h1 className="mt-1 text-lg font-semibold text-white">
           Purchase History
         </h1>
-        <p className="mt-1 text-xs text-slate-400">
-          Review saved purchases and recent allotment activity.
-        </p>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -38,22 +67,64 @@ export default function PurchaseHistoryPage() {
       </div>
 
       <SectionCard title="Saved Purchases">
-        {purchases.length > 0 ? (
+        {recentPurchases.length > 0 ? (
           <div className="space-y-2.5">
-            {purchases.map((purchase) => (
+            {recentPurchases.map((purchase) => (
               <PurchaseHistoryItem
                 key={purchase.id}
-                productName={purchase.productName}
-                grams={purchase.grams}
                 purchaseDate={purchase.purchaseDate}
                 dispensary={purchase.dispensary}
                 source={purchase.source}
+                items={purchase.items}
+                isOpen={openRecentIds.includes(purchase.id)}
+                onToggle={() => toggleRecentPurchase(purchase.id)}
               />
             ))}
           </div>
         ) : (
           <div className="rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-4 text-sm text-slate-400">
             No purchases saved yet.
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard title="Older Purchases">
+        {olderPurchases.length > 0 ? (
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                Select Purchase Date
+              </label>
+
+              <select
+                value={selectedOlderId}
+                onChange={(e) => handleOlderSelection(e.target.value)}
+                className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+              >
+                <option value="">Select date</option>
+                {olderPurchases.map((purchase) => (
+                  <option key={purchase.id} value={purchase.id}>
+                    {purchase.purchaseDate}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedOlderPurchase && (
+              <PurchaseHistoryItem
+                key={selectedOlderPurchase.id}
+                purchaseDate={selectedOlderPurchase.purchaseDate}
+                dispensary={selectedOlderPurchase.dispensary}
+                source={selectedOlderPurchase.source}
+                items={selectedOlderPurchase.items}
+                isOpen={isOlderOpen}
+                onToggle={toggleOlderPurchase}
+              />
+            )}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-4 text-sm text-slate-400">
+            No older purchases available.
           </div>
         )}
       </SectionCard>

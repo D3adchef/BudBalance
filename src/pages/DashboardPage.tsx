@@ -1,55 +1,228 @@
-import QuickActionButton from "../components/QuickActionButton"
-import SectionCard from "../components/SectionCard"
+import { useMemo, useState } from "react"
 import { usePurchaseStore } from "../features/purchases/purchaseStore"
-import {
-  getRecentPurchases,
-  getRemainingGrams,
-  getUpcomingRollOffs,
-  getUsedGrams,
-} from "../utils/allotment"
+
+const ALLOTMENT_LIMIT = 84.03
+
+type CalendarEvent = {
+  type: "return" | "purchase"
+  grams: number
+}
+
+function roundToTwo(num: number) {
+  return Math.round(num * 100) / 100
+}
+
+function getPurchaseTotalGrams(items: { grams: number }[]) {
+  return roundToTwo(items.reduce((total, item) => total + item.grams, 0))
+}
+
+function getMonthName(date: Date) {
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  })
+}
+
+function formatDateKey(date: Date) {
+  return date.toISOString().split("T")[0]
+}
+
+function createLocalDate(dateString: string) {
+  return new Date(`${dateString}T00:00:00`)
+}
+
+function getDaysInMonth(year: number, month: number) {
+  return new Date(year, month + 1, 0).getDate()
+}
+
+function getFirstDayOfMonth(year: number, month: number) {
+  return new Date(year, month, 1).getDay()
+}
 
 export default function DashboardPage() {
   const purchases = usePurchaseStore((state) => state.purchases)
 
-  const usedGrams = getUsedGrams(purchases)
-  const remainingGrams = getRemainingGrams(purchases)
-  const upcomingRollOffs = getUpcomingRollOffs(purchases).slice(0, 3)
-  const recentPurchases = getRecentPurchases(purchases, 3)
+  const usedGrams = useMemo(() => {
+    const today = new Date()
 
-  const percentUsed = Math.min((usedGrams / 84) * 100, 100)
+    return roundToTwo(
+      purchases.reduce((total, purchase) => {
+        const purchaseDate = createLocalDate(purchase.purchaseDate)
+        const ageInMs = today.getTime() - purchaseDate.getTime()
+        const ageInDays = Math.floor(ageInMs / (1000 * 60 * 60 * 24))
+
+        if (ageInDays >= 0 && ageInDays < 31) {
+          return total + getPurchaseTotalGrams(purchase.items || [])
+        }
+
+        return total
+      }, 0)
+    )
+  }, [purchases])
+
+  const remainingGrams = roundToTwo(Math.max(ALLOTMENT_LIMIT - usedGrams, 0))
+  const percentUsed = Math.min((usedGrams / ALLOTMENT_LIMIT) * 100, 100)
   const purchaseCount = purchases.length
   const avgPurchase =
-    purchaseCount > 0 ? (usedGrams / purchaseCount).toFixed(1) : "0.0"
+    purchaseCount > 0 ? roundToTwo(usedGrams / purchaseCount).toFixed(2) : "0.00"
+
+  const today = new Date()
+  const currentYear = today.getFullYear()
+  const currentMonth = today.getMonth()
+  const daysInMonth = getDaysInMonth(currentYear, currentMonth)
+  const firstDay = getFirstDayOfMonth(currentYear, currentMonth)
+
+  const calendarEvents = useMemo(() => {
+    const eventMap: Record<string, CalendarEvent[]> = {}
+
+    purchases.forEach((purchase) => {
+      const totalGrams = getPurchaseTotalGrams(purchase.items || [])
+      const purchaseDate = createLocalDate(purchase.purchaseDate)
+      const purchaseKey = formatDateKey(purchaseDate)
+
+      if (!eventMap[purchaseKey]) eventMap[purchaseKey] = []
+      eventMap[purchaseKey].push({
+        type: "purchase",
+        grams: totalGrams,
+      })
+
+      const rollOffDate = new Date(purchaseDate)
+      rollOffDate.setDate(rollOffDate.getDate() + 31)
+      const rollOffKey = formatDateKey(rollOffDate)
+
+      if (!eventMap[rollOffKey]) eventMap[rollOffKey] = []
+      eventMap[rollOffKey].push({
+        type: "return",
+        grams: totalGrams,
+      })
+    })
+
+    return eventMap
+  }, [purchases])
+
+  const [activeBubble, setActiveBubble] = useState<{
+    dateKey: string
+    type: "return" | "purchase"
+  } | null>(null)
+
+  const calendarCells = []
+
+  for (let i = 0; i < firstDay; i++) {
+    calendarCells.push(
+      <div
+        key={`empty-${i}`}
+        className="min-h-[48px] rounded-lg border border-white/5 bg-slate-950/30"
+      />
+    )
+  }
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const cellDate = new Date(currentYear, currentMonth, day)
+    const dateKey = formatDateKey(cellDate)
+    const events = calendarEvents[dateKey] || []
+
+    const purchaseEvents = events.filter((event) => event.type === "purchase")
+    const returnEvents = events.filter((event) => event.type === "return")
+
+    const purchaseTotal = roundToTwo(
+      purchaseEvents.reduce((sum, event) => sum + event.grams, 0)
+    )
+    const returnTotal = roundToTwo(
+      returnEvents.reduce((sum, event) => sum + event.grams, 0)
+    )
+
+    calendarCells.push(
+      <div
+        key={dateKey}
+        className="relative min-h-[48px] rounded-lg border border-white/10 bg-slate-900/80 p-1.5"
+      >
+        <p className="text-[10px] font-semibold text-white">{day}</p>
+
+        <div className="mt-1 flex flex-wrap gap-1">
+          {returnEvents.length > 0 && (
+            <button
+              type="button"
+              onClick={() =>
+                setActiveBubble((current) =>
+                  current?.dateKey === dateKey && current.type === "return"
+                    ? null
+                    : { dateKey, type: "return" }
+                )
+              }
+              className="flex h-4 w-4 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 text-[9px] font-bold text-emerald-400"
+            >
+              +
+            </button>
+          )}
+
+          {purchaseEvents.length > 0 && (
+            <button
+              type="button"
+              onClick={() =>
+                setActiveBubble((current) =>
+                  current?.dateKey === dateKey && current.type === "purchase"
+                    ? null
+                    : { dateKey, type: "purchase" }
+                )
+              }
+              className="flex h-4 w-4 items-center justify-center rounded-full border border-red-500/30 bg-red-500/15 text-[9px] font-bold text-red-400"
+            >
+              −
+            </button>
+          )}
+        </div>
+
+        {activeBubble?.dateKey === dateKey && (
+          <div className="absolute left-1 right-1 top-6 z-20 rounded-lg border border-white/10 bg-slate-950 px-2 py-1 shadow-xl shadow-black/40">
+            {activeBubble.type === "return" && returnEvents.length > 0 && (
+              <p className="text-[9px] text-emerald-300">
+                +{returnTotal}g returning
+              </p>
+            )}
+
+            {activeBubble.type === "purchase" && purchaseEvents.length > 0 && (
+              <p className="text-[9px] text-red-300">-{purchaseTotal}g used</p>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
-    <div className="space-y-4">
-      <section className="overflow-hidden rounded-3xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/15 via-slate-950 to-slate-900 p-4 shadow-lg shadow-emerald-950/20">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
-              Current Balance
+    <div className="space-y-3">
+      <section className="overflow-hidden rounded-3xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/15 via-slate-950 to-slate-900 p-3 shadow-lg shadow-emerald-950/20">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5">
+            <p className="text-[10px] uppercase tracking-wide text-slate-400">
+              Current Grams
             </p>
-            <h2 className="mt-2 text-4xl font-bold tracking-tight text-white">
+            <p className="mt-1 text-xl font-semibold text-white">
               {remainingGrams}g
-            </h2>
-            <p className="mt-1 text-xs text-slate-300">
-              Available to purchase right now
+            </p>
+            <p className="mt-1 text-[10px] text-slate-400">
+              Available right now
             </p>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-right">
-            <p className="text-[11px] text-slate-400">Used</p>
-            <p className="text-xl font-semibold text-white">{usedGrams}g</p>
+          <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5 text-right">
+            <p className="text-[10px] uppercase tracking-wide text-slate-400">
+              Used Grams
+            </p>
+            <p className="mt-1 text-xl font-semibold text-white">
+              {usedGrams}g
+            </p>
+            <p className="mt-1 text-[10px] text-slate-400">Active window</p>
           </div>
         </div>
 
-        <div className="mt-4">
-          <div className="mb-2 flex items-center justify-between text-[11px] text-slate-400">
+        <div className="mt-3">
+          <div className="mb-1.5 flex items-center justify-between text-[10px] text-slate-400">
             <span>31-day allotment usage</span>
             <span>{Math.round(percentUsed)}%</span>
           </div>
 
-          <div className="h-2.5 overflow-hidden rounded-full bg-slate-800/90">
+          <div className="h-2 overflow-hidden rounded-full bg-slate-800/90">
             <div
               className="h-full rounded-full bg-emerald-400 transition-all"
               style={{ width: `${percentUsed}%` }}
@@ -57,107 +230,74 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3">
-            <p className="text-[11px] uppercase tracking-wide text-slate-400">
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5">
+            <p className="text-[10px] uppercase tracking-wide text-slate-400">
               Total Purchases
             </p>
-            <p className="mt-1 text-lg font-semibold text-white">
+            <p className="mt-1 text-base font-semibold text-white">
               {purchaseCount}
             </p>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3">
-            <p className="text-[11px] uppercase tracking-wide text-slate-400">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5">
+            <p className="text-[10px] uppercase tracking-wide text-slate-400">
               Avg Purchase
             </p>
-            <p className="mt-1 text-lg font-semibold text-white">
+            <p className="mt-1 text-base font-semibold text-white">
               {avgPurchase}g
             </p>
           </div>
         </div>
       </section>
 
-      <div className="grid grid-cols-2 gap-3">
-        <QuickActionButton to="/add-purchase" label="Add Purchase" />
-        <QuickActionButton to="/tools" label="Smart Planner" />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-2xl border border-white/10 bg-slate-900/80 px-3 py-3 shadow-sm">
-          <p className="text-[11px] uppercase tracking-wide text-slate-400">
-            Used
+      <section className="rounded-3xl border border-white/10 bg-slate-900/90 p-3 shadow-lg shadow-black/20">
+        <div className="mb-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-400">
+            Calendar View
           </p>
-          <p className="mt-1 text-xl font-semibold text-white">{usedGrams}g</p>
-        </div>
-
-        <div className="rounded-2xl border border-white/10 bg-slate-900/80 px-3 py-3 shadow-sm">
-          <p className="text-[11px] uppercase tracking-wide text-slate-400">
-            Remaining
-          </p>
-          <p className="mt-1 text-xl font-semibold text-emerald-400">
-            {remainingGrams}g
+          <h3 className="mt-1 text-base font-semibold text-white">
+            {getMonthName(today)}
+          </h3>
+          <p className="mt-1 text-[11px] text-slate-400">
+            Track allotment used and returning by date.
           </p>
         </div>
-      </div>
 
-      <SectionCard title="Allotment Returning">
-        <div className="space-y-2">
-          {upcomingRollOffs.length > 0 ? (
-            upcomingRollOffs.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between rounded-2xl border border-white/5 bg-slate-900/60 px-3 py-2.5"
-              >
-                <div className="min-w-0 pr-3">
-                  <p className="truncate text-sm font-medium text-white">
-                    {item.productName}
-                  </p>
-                  <p className="text-[11px] text-slate-400">
-                    {item.rollOffDate}
-                  </p>
-                </div>
-
-                <span className="shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-400">
-                  +{item.grams}g
-                </span>
-              </div>
-            ))
-          ) : (
-            <p className="text-sm text-slate-400">
-              No active purchases in the current window.
-            </p>
-          )}
+        <div className="grid grid-cols-7 gap-1 text-center text-[9px] font-medium uppercase tracking-wide text-slate-500">
+          <div>Sun</div>
+          <div>Mon</div>
+          <div>Tue</div>
+          <div>Wed</div>
+          <div>Thu</div>
+          <div>Fri</div>
+          <div>Sat</div>
         </div>
-      </SectionCard>
 
-      <SectionCard title="Recent Purchases">
-        <div className="space-y-2">
-          {recentPurchases.length > 0 ? (
-            recentPurchases.map((purchase) => (
-              <div
-                key={purchase.id}
-                className="flex items-center justify-between rounded-2xl border border-white/5 bg-slate-900/60 px-3 py-2.5"
-              >
-                <div className="min-w-0 pr-3">
-                  <p className="truncate text-sm font-medium text-white">
-                    {purchase.productName}
-                  </p>
-                  <p className="text-[11px] text-slate-400">
-                    {purchase.purchaseDate}
-                  </p>
-                </div>
+        <div className="mt-2 grid grid-cols-7 gap-1">{calendarCells}</div>
 
-                <span className="shrink-0 text-sm font-semibold text-white">
-                  {purchase.grams}g
-                </span>
-              </div>
-            ))
-          ) : (
-            <p className="text-sm text-slate-400">No purchases saved yet.</p>
-          )}
+        <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/70 p-2.5">
+          <div className="space-y-1.5">
+            <div className="flex items-start gap-2">
+              <span className="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 text-[9px] font-bold text-emerald-400">
+                +
+              </span>
+              <p className="text-[11px] text-slate-300">
+                Tap green + to see allotment returning.
+              </p>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <span className="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-red-500/30 bg-red-500/15 text-[9px] font-bold text-red-400">
+                −
+              </span>
+              <p className="text-[11px] text-slate-300">
+                Tap red − to see allotment used.
+              </p>
+            </div>
+          </div>
         </div>
-      </SectionCard>
+      </section>
     </div>
   )
 }
