@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import type { ChangeEvent, FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
+import Tesseract from "tesseract.js"
 import { usePurchaseStore } from "../features/purchases/purchaseStore"
 import { useFavoritesStore } from "../features/favorites/favoritesStore"
 
@@ -9,6 +10,13 @@ type DraftItem = {
   productName: string
   category: string
   grams: string
+}
+
+type ParsedReceipt = {
+  dispensary: string
+  purchaseDate: string
+  items: DraftItem[]
+  rawText: string
 }
 
 function createEmptyItem(): DraftItem {
@@ -28,6 +36,166 @@ function getItemSummary(item: DraftItem) {
   if (item.grams.trim()) parts.push(`${item.grams}g`)
 
   return parts.length > 0 ? parts.join(" • ") : "Tap to add details"
+}
+
+function normalizeDateForInput(value: string) {
+  const slashMatch = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/)
+  if (slashMatch) {
+    const month = slashMatch[1].padStart(2, "0")
+    const day = slashMatch[2].padStart(2, "0")
+    const year =
+      slashMatch[3].length === 2 ? `20${slashMatch[3]}` : slashMatch[3]
+    return `${year}-${month}-${day}`
+  }
+
+  const dashMatch = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (dashMatch) {
+    const year = dashMatch[1]
+    const month = dashMatch[2].padStart(2, "0")
+    const day = dashMatch[3].padStart(2, "0")
+    return `${year}-${month}-${day}`
+  }
+
+  return ""
+}
+
+function guessCategory(productName: string) {
+  const name = productName.toLowerCase()
+
+  if (
+    name.includes("pre-roll") ||
+    name.includes("preroll") ||
+    name.includes("joint")
+  ) {
+    return "pre-roll"
+  }
+
+  if (
+    name.includes("gummy") ||
+    name.includes("edible") ||
+    name.includes("chocolate") ||
+    name.includes("chew")
+  ) {
+    return "edible"
+  }
+
+  if (
+    name.includes("vape") ||
+    name.includes("cart") ||
+    name.includes("cartridge")
+  ) {
+    return "vape"
+  }
+
+  if (
+    name.includes("wax") ||
+    name.includes("shatter") ||
+    name.includes("badder") ||
+    name.includes("live resin") ||
+    name.includes("concentrate")
+  ) {
+    return "concentrate"
+  }
+
+  return "flower"
+}
+
+function parseReceiptText(rawText: string): ParsedReceipt {
+  const rawLines = rawText
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+
+  const lines = rawLines.filter((line) => line.length >= 2)
+
+  const datePattern =
+    /\b(\d{1,2}\/\d{1,2}\/\d{2,4}|\d{4}-\d{1,2}-\d{1,2})\b/
+  const foundDate =
+    lines.find((line) => datePattern.test(line))?.match(datePattern)?.[0] || ""
+
+  const normalizedDate = normalizeDateForInput(foundDate)
+
+  const dispensaryBlacklist = [
+    "subtotal",
+    "total",
+    "tax",
+    "change",
+    "cash",
+    "visa",
+    "mastercard",
+    "debit",
+    "receipt",
+    "transaction",
+    "invoice",
+    "discount",
+    "balance",
+    "items",
+    "thank you",
+    "www",
+    "phone",
+    "date",
+    "time",
+  ]
+
+  const dispensary =
+    lines.find((line) => {
+      const lower = line.toLowerCase()
+
+      if (lower.length < 3) return false
+      if (datePattern.test(lower)) return false
+      if (/\d{3}[-.)\s]\d{3}[-.\s]\d{4}/.test(lower)) return false
+      if (dispensaryBlacklist.some((term) => lower.includes(term))) return false
+
+      return /[a-z]/i.test(lower)
+    }) || ""
+
+  const itemCandidates = lines.filter((line) => {
+    const lower = line.toLowerCase()
+
+    if (!/\b\d+(\.\d+)?\s?g\b/i.test(line)) return false
+    if (
+      lower.includes("subtotal") ||
+      lower.includes("total") ||
+      lower.includes("tax") ||
+      lower.includes("discount") ||
+      lower.includes("change") ||
+      lower.includes("balance")
+    ) {
+      return false
+    }
+
+    return true
+  })
+
+  const parsedItems: DraftItem[] = itemCandidates.map((line) => {
+    const gramsMatch = line.match(/(\d+(\.\d+)?)\s?g\b/i)
+    const grams = gramsMatch?.[1] || ""
+
+    let productName = line
+    if (gramsMatch?.[0]) {
+      productName = productName.replace(gramsMatch[0], "")
+    }
+
+    productName = productName
+      .replace(/\$?\d+(\.\d{2})?/g, "")
+      .replace(/\s{2,}/g, " ")
+      .replace(/[-•|]+/g, " ")
+      .trim()
+
+    return {
+      id: crypto.randomUUID(),
+      productName: productName || "Scanned Item",
+      category: guessCategory(productName || line),
+      grams,
+    }
+  })
+
+  return {
+    dispensary,
+    purchaseDate: normalizedDate,
+    items: parsedItems.length > 0 ? parsedItems : [createEmptyItem()],
+    rawText,
+  }
 }
 
 export default function AddPurchasePage() {
@@ -59,6 +227,8 @@ export default function AddPurchasePage() {
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraError, setCameraError] = useState("")
   const [stream, setStream] = useState<MediaStream | null>(null)
+  const [isScanning, setIsScanning] = useState(false)
+  const [scanStatus, setScanStatus] = useState("")
 
   useEffect(() => {
     loadFavoritesForCurrentUser()
@@ -102,6 +272,7 @@ export default function AddPurchasePage() {
       stopCamera()
       setCameraError("")
       setReceiptImage(null)
+      setScanStatus("")
 
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -161,6 +332,7 @@ export default function AddPurchasePage() {
     const imageDataUrl = canvas.toDataURL("image/png")
     setReceiptImage(imageDataUrl)
     setCameraError("")
+    setScanStatus("Receipt image ready to scan.")
     stopCamera()
   }
 
@@ -173,6 +345,7 @@ export default function AddPurchasePage() {
     reader.onloadend = () => {
       setReceiptImage(reader.result as string)
       setCameraError("")
+      setScanStatus("Receipt image ready to scan.")
       stopCamera()
     }
 
@@ -182,6 +355,7 @@ export default function AddPurchasePage() {
   function clearImage() {
     setReceiptImage(null)
     setCameraError("")
+    setScanStatus("")
   }
 
   function updateItem(
@@ -215,6 +389,51 @@ export default function AddPurchasePage() {
           : item
       )
     )
+  }
+
+  async function handleScanReceipt() {
+    if (!receiptImage) {
+      alert("Please capture or upload a receipt image first.")
+      return
+    }
+
+    try {
+      setIsScanning(true)
+      setScanStatus("Reading receipt...")
+
+      const result = await Tesseract.recognize(receiptImage, "eng")
+      const parsed = parseReceiptText(result.data.text)
+
+      if (parsed.dispensary) {
+        setDispensary(parsed.dispensary)
+      }
+
+      if (parsed.purchaseDate) {
+        setPurchaseDate(parsed.purchaseDate)
+      }
+
+      if (
+        parsed.items.length > 0 &&
+        parsed.items.some(
+          (item) => item.productName || item.category || item.grams
+        )
+      ) {
+        setItems(parsed.items)
+        setExpandedItemId(parsed.items[0]?.id ?? null)
+      }
+
+      setNotes((currentNotes) => {
+        if (currentNotes.trim()) return currentNotes
+        return `Scanned from receipt image.`
+      })
+
+      setScanStatus("Receipt scanned. Please review the details before saving.")
+    } catch (error) {
+      console.error("Receipt scan error:", error)
+      setScanStatus("Unable to scan this receipt. Please enter details manually.")
+    } finally {
+      setIsScanning(false)
+    }
   }
 
   function addAnotherItem() {
@@ -289,6 +508,7 @@ export default function AddPurchasePage() {
     setExpandedItemId(null)
     setReceiptImage(null)
     setCameraError("")
+    setScanStatus("")
     stopCamera()
 
     navigate("/purchase-history")
@@ -392,13 +612,30 @@ export default function AddPurchasePage() {
                     className="w-full rounded-2xl border border-white/10"
                   />
 
-                  <button
-                    type="button"
-                    onClick={clearImage}
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-                  >
-                    Remove Image
-                  </button>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={handleScanReceipt}
+                      disabled={isScanning}
+                      className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isScanning ? "Scanning..." : "Scan Receipt"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={clearImage}
+                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                    >
+                      Remove Image
+                    </button>
+                  </div>
+
+                  {scanStatus && (
+                    <p className="rounded-2xl border border-white/10 bg-slate-900/70 px-3 py-2 text-sm text-slate-300">
+                      {scanStatus}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
