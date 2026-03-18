@@ -13,12 +13,12 @@ export default function LoginPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
-    const success = login(username, password)
+    const result = login(username, password)
 
-    if (success) {
+    if (result.success) {
       navigate("/")
     } else {
-      alert("Invalid username or password")
+      alert(result.message)
     }
   }
 
@@ -42,7 +42,6 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Username */}
         <div>
           <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
             Username
@@ -58,7 +57,6 @@ export default function LoginPage() {
           />
         </div>
 
-        {/* Password */}
         <div>
           <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
             Password
@@ -84,23 +82,24 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Login Button */}
-        <button
-          type="submit"
-          className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.97]"
-        >
-          Login
-        </button>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="submit"
+            className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.97]"
+          >
+            Login
+          </button>
 
-        {/* Signup Link */}
-        <p className="text-center text-sm text-slate-400">
-          Don’t have an account?{" "}
           <Link
             to="/signup"
-            className="font-medium text-emerald-400 transition hover:text-emerald-300"
+            className="flex w-full items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.97]"
           >
-            Create one
+            Create Account
           </Link>
+        </div>
+
+        <p className="text-center text-xs text-slate-500">
+          Secure access to your personal allotment tracker.
         </p>
       </form>
     </div>

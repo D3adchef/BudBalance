@@ -1,14 +1,34 @@
 import { create } from "zustand"
 
-type UserAccount = {
+export type UserAccount = {
+  firstName: string
+  lastName: string
   username: string
+  email: string
+  birthMonth: string
+  birthDay: string
+  birthYear: string
+  mobile: string
+  password: string
+  createdAt: string
+}
+
+type SignupInput = {
+  firstName: string
+  lastName: string
+  username: string
+  email: string
+  birthMonth: string
+  birthDay: string
+  birthYear: string
+  mobile: string
   password: string
 }
 
 type AuthStore = {
   users: UserAccount[]
   currentUser: string | null
-  signup: (username: string, password: string) => { success: boolean; message: string }
+  signup: (data: SignupInput) => { success: boolean; message: string }
   login: (username: string, password: string) => { success: boolean; message: string }
   logout: () => void
 }
@@ -16,9 +36,32 @@ type AuthStore = {
 const USERS_STORAGE_KEY = "budbalance-users"
 const CURRENT_USER_STORAGE_KEY = "budbalance-current-user"
 
+function normalizeUser(raw: any): UserAccount {
+  return {
+    firstName: String(raw?.firstName ?? "").trim(),
+    lastName: String(raw?.lastName ?? "").trim(),
+    username: String(raw?.username ?? "").trim(),
+    email: String(raw?.email ?? "").trim(),
+    birthMonth: String(raw?.birthMonth ?? "").trim(),
+    birthDay: String(raw?.birthDay ?? "").trim(),
+    birthYear: String(raw?.birthYear ?? "").trim(),
+    mobile: String(raw?.mobile ?? "").trim(),
+    password: String(raw?.password ?? "").trim(),
+    createdAt: String(raw?.createdAt ?? new Date().toISOString()).trim(),
+  }
+}
+
 function loadUsers(): UserAccount[] {
   const saved = localStorage.getItem(USERS_STORAGE_KEY)
-  return saved ? JSON.parse(saved) : []
+
+  if (!saved) return []
+
+  try {
+    const parsed = JSON.parse(saved)
+    return Array.isArray(parsed) ? parsed.map(normalizeUser) : []
+  } catch {
+    return []
+  }
 }
 
 function loadCurrentUser(): string | null {
@@ -41,36 +84,57 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   users: loadUsers(),
   currentUser: loadCurrentUser(),
 
-  signup: (username, password) => {
-    const trimmedUsername = username.trim()
-    const trimmedPassword = password.trim()
+  signup: (data) => {
+    const newUser: UserAccount = {
+      firstName: data.firstName.trim(),
+      lastName: data.lastName.trim(),
+      username: data.username.trim(),
+      email: data.email.trim(),
+      birthMonth: data.birthMonth.trim(),
+      birthDay: data.birthDay.trim(),
+      birthYear: data.birthYear.trim(),
+      mobile: data.mobile.trim(),
+      password: data.password.trim(),
+      createdAt: new Date().toISOString(),
+    }
 
-    if (!trimmedUsername || !trimmedPassword) {
-      return { success: false, message: "Username and password are required." }
+    if (
+      !newUser.lastName ||
+      !newUser.username ||
+      !newUser.email ||
+      !newUser.password
+    ) {
+      return {
+        success: false,
+        message: "Please complete all required fields.",
+      }
     }
 
     const existingUser = get().users.find(
-      (user) => user.username.toLowerCase() === trimmedUsername.toLowerCase()
+      (user) => user.username.toLowerCase() === newUser.username.toLowerCase()
     )
 
     if (existingUser) {
-      return { success: false, message: "That username already exists." }
+      return {
+        success: false,
+        message: "That username already exists.",
+      }
     }
 
-    const updatedUsers = [
-      ...get().users,
-      { username: trimmedUsername, password: trimmedPassword },
-    ]
+    const updatedUsers = [...get().users, newUser]
 
     saveUsers(updatedUsers)
-    saveCurrentUser(trimmedUsername)
+    saveCurrentUser(newUser.username)
 
     set({
       users: updatedUsers,
-      currentUser: trimmedUsername,
+      currentUser: newUser.username,
     })
 
-    return { success: true, message: "Account created successfully." }
+    return {
+      success: true,
+      message: "Account created successfully.",
+    }
   },
 
   login: (username, password) => {

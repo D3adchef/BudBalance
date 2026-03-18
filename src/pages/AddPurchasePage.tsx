@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import type { ChangeEvent, FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import Tesseract from "tesseract.js"
+import PageIntroPopup from "../components/PageIntroPopup"
 import { usePurchaseStore } from "../features/purchases/purchaseStore"
 import { useFavoritesStore } from "../features/favorites/favoritesStore"
 
@@ -515,355 +516,363 @@ export default function AddPurchasePage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="px-1">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
-          BudBalance
-        </p>
-        <h2 className="mt-1 text-lg font-semibold text-white">Add Purchase</h2>
-        <p className="mt-1 text-xs text-slate-400">
-          Capture a receipt or enter one purchase with multiple items.
-        </p>
-      </div>
+    <>
+      <PageIntroPopup
+        pageKey="add-purchase"
+        title="Add a Purchase"
+        description="Use this page to manually enter a purchase or scan a receipt to speed things up. Add each item from the purchase so BudBalance can track your active grams correctly."
+      />
 
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <div className="rounded-3xl border border-white/10 bg-slate-900/90 p-4 shadow-lg shadow-black/20">
-          <div className="space-y-5">
-            <div>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Smart Scan</h3>
-                  <p className="mt-1 text-xs leading-5 text-slate-400">
-                    Use your camera or upload a receipt/package photo, then
-                    confirm the details and line items below.
+      <div className="space-y-4">
+        <div className="px-1">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
+            BudBalance
+          </p>
+          <h2 className="mt-1 text-lg font-semibold text-white">Add Purchase</h2>
+          <p className="mt-1 text-xs text-slate-400">
+            Capture a receipt or enter one purchase with multiple items.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="rounded-3xl border border-white/10 bg-slate-900/90 p-4 shadow-lg shadow-black/20">
+            <div className="space-y-5">
+              <div>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">Smart Scan</h3>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">
+                      Use your camera or upload a receipt/package photo, then
+                      confirm the details and line items below.
+                    </p>
+                  </div>
+
+                  <div className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-400">
+                    Optional
+                  </div>
+                </div>
+
+                <div className="mt-4 flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={startCamera}
+                    className="flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
+                  >
+                    <span aria-hidden="true">📷</span>
+                    <span>Camera</span>
+                  </button>
+
+                  <label className="flex h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 text-sm font-semibold text-white transition hover:bg-white/10">
+                    <span aria-hidden="true">📁</span>
+                    <span>Upload</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                {cameraError && (
+                  <p className="mt-3 rounded-2xl border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-300">
+                    {cameraError}
+                  </p>
+                )}
+
+                {cameraActive && (
+                  <div className="mt-3 space-y-3 rounded-2xl border border-white/10 bg-slate-950 p-3">
+                    <div className="overflow-hidden rounded-2xl border border-white/10 bg-black">
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="block max-h-[300px] w-full object-cover"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={capturePhoto}
+                        className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
+                      >
+                        Capture
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={stopCamera}
+                        className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {receiptImage && (
+                  <div className="mt-3 space-y-3 rounded-2xl border border-white/10 bg-slate-950 p-3">
+                    <img
+                      src={receiptImage}
+                      alt="Receipt preview"
+                      className="w-full rounded-2xl border border-white/10"
+                    />
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={handleScanReceipt}
+                        disabled={isScanning}
+                        className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isScanning ? "Scanning..." : "Scan Receipt"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={clearImage}
+                        className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                      >
+                        Remove Image
+                      </button>
+                    </div>
+
+                    {scanStatus && (
+                      <p className="rounded-2xl border border-white/10 bg-slate-900/70 px-3 py-2 text-sm text-slate-300">
+                        {scanStatus}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-white/10 pt-5">
+                <div className="mb-3">
+                  <h3 className="text-sm font-semibold text-white">
+                    Purchase Details
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-400">
+                    These details apply to the whole purchase/receipt.
                   </p>
                 </div>
 
-                <div className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-400">
-                  Optional
-                </div>
-              </div>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                        Purchase Date
+                      </label>
+                      <input
+                        type="date"
+                        value={purchaseDate}
+                        onChange={(e) => setPurchaseDate(e.target.value)}
+                        className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                      />
+                    </div>
 
-              <div className="mt-4 flex items-center gap-2.5">
-                <button
-                  type="button"
-                  onClick={startCamera}
-                  className="flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
-                >
-                  <span aria-hidden="true">📷</span>
-                  <span>Camera</span>
-                </button>
+                    <div>
+                      <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                        Dispensary
+                      </label>
 
-                <label className="flex h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 text-sm font-semibold text-white transition hover:bg-white/10">
-                  <span aria-hidden="true">📁</span>
-                  <span>Upload</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                  />
-                </label>
-              </div>
+                      {favoriteDispensaries.length > 0 && (
+                        <select
+                          value={selectedFavoriteDispensary}
+                          onChange={(e) =>
+                            handleFavoriteDispensaryChange(e.target.value)
+                          }
+                          className="mb-2 w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                        >
+                          <option value="">Choose favorite dispensary</option>
+                          {favoriteDispensaries.map((favorite) => (
+                            <option key={favorite} value={favorite}>
+                              {favorite}
+                            </option>
+                          ))}
+                        </select>
+                      )}
 
-              {cameraError && (
-                <p className="mt-3 rounded-2xl border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-300">
-                  {cameraError}
-                </p>
-              )}
-
-              {cameraActive && (
-                <div className="mt-3 space-y-3 rounded-2xl border border-white/10 bg-slate-950 p-3">
-                  <div className="overflow-hidden rounded-2xl border border-white/10 bg-black">
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="block max-h-[300px] w-full object-cover"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <button
-                      type="button"
-                      onClick={capturePhoto}
-                      className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
-                    >
-                      Capture
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={stopCamera}
-                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {receiptImage && (
-                <div className="mt-3 space-y-3 rounded-2xl border border-white/10 bg-slate-950 p-3">
-                  <img
-                    src={receiptImage}
-                    alt="Receipt preview"
-                    className="w-full rounded-2xl border border-white/10"
-                  />
-
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <button
-                      type="button"
-                      onClick={handleScanReceipt}
-                      disabled={isScanning}
-                      className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isScanning ? "Scanning..." : "Scan Receipt"}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={clearImage}
-                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-                    >
-                      Remove Image
-                    </button>
-                  </div>
-
-                  {scanStatus && (
-                    <p className="rounded-2xl border border-white/10 bg-slate-900/70 px-3 py-2 text-sm text-slate-300">
-                      {scanStatus}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="border-t border-white/10 pt-5">
-              <div className="mb-3">
-                <h3 className="text-sm font-semibold text-white">
-                  Purchase Details
-                </h3>
-                <p className="mt-1 text-xs text-slate-400">
-                  These details apply to the whole purchase/receipt.
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                      Purchase Date
-                    </label>
-                    <input
-                      type="date"
-                      value={purchaseDate}
-                      onChange={(e) => setPurchaseDate(e.target.value)}
-                      className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
-                    />
+                      <input
+                        placeholder="Optional dispensary name"
+                        value={dispensary}
+                        onChange={(e) => setDispensary(e.target.value)}
+                        className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
+                      />
+                    </div>
                   </div>
 
                   <div>
                     <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                      Dispensary
+                      Notes
                     </label>
-
-                    {favoriteDispensaries.length > 0 && (
-                      <select
-                        value={selectedFavoriteDispensary}
-                        onChange={(e) =>
-                          handleFavoriteDispensaryChange(e.target.value)
-                        }
-                        className="mb-2 w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
-                      >
-                        <option value="">Choose favorite dispensary</option>
-                        {favoriteDispensaries.map((favorite) => (
-                          <option key={favorite} value={favorite}>
-                            {favorite}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-
-                    <input
-                      placeholder="Optional dispensary name"
-                      value={dispensary}
-                      onChange={(e) => setDispensary(e.target.value)}
-                      className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
+                    <textarea
+                      ref={notesRef}
+                      placeholder="Optional notes for the whole purchase"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      className="w-full resize-none overflow-hidden rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
+                      rows={1}
                     />
                   </div>
                 </div>
+              </div>
 
-                <div>
-                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                    Notes
-                  </label>
-                  <textarea
-                    ref={notesRef}
-                    placeholder="Optional notes for the whole purchase"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    className="w-full resize-none overflow-hidden rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
-                    rows={1}
-                  />
+              <div className="border-t border-white/10 pt-5">
+                <div className="mb-3">
+                  <h3 className="text-sm font-semibold text-white">Items</h3>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Add every product from this purchase.
+                  </p>
                 </div>
-              </div>
-            </div>
 
-            <div className="border-t border-white/10 pt-5">
-              <div className="mb-3">
-                <h3 className="text-sm font-semibold text-white">Items</h3>
-                <p className="mt-1 text-xs text-slate-400">
-                  Add every product from this purchase.
-                </p>
-              </div>
+                <div className="space-y-3">
+                  {items.map((item, index) => {
+                    const isExpanded = expandedItemId === item.id
 
-              <div className="space-y-3">
-                {items.map((item, index) => {
-                  const isExpanded = expandedItemId === item.id
-
-                  return (
-                    <div
-                      key={item.id}
-                      className="rounded-2xl border border-white/10 bg-slate-950/80"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => toggleExpanded(item.id)}
-                        className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+                    return (
+                      <div
+                        key={item.id}
+                        className="rounded-2xl border border-white/10 bg-slate-950/80"
                       >
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-white">
-                            Item {index + 1}
-                          </p>
-                          <p className="mt-1 truncate text-xs text-slate-400">
-                            {getItemSummary(item)}
-                          </p>
-                        </div>
-
-                        <div className="shrink-0 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-400">
-                          {isExpanded ? "−" : "+"}
-                        </div>
-                      </button>
-
-                      {isExpanded && (
-                        <div className="border-t border-white/10 px-3 pb-3 pt-3">
-                          <div className="mb-3 flex items-center justify-end">
-                            {items.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => removeItem(item.id)}
-                                className="rounded-xl border border-red-500/20 bg-red-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-red-300 transition hover:bg-red-500/15"
-                              >
-                                Remove
-                              </button>
-                            )}
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(item.id)}
+                          className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-white">
+                              Item {index + 1}
+                            </p>
+                            <p className="mt-1 truncate text-xs text-slate-400">
+                              {getItemSummary(item)}
+                            </p>
                           </div>
 
-                          <div className="space-y-3">
-                            {favoritePurchases.length > 0 && (
-                              <div>
-                                <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                                  Favorite Purchase
-                                </label>
-                                <select
-                                  defaultValue=""
-                                  onChange={(e) =>
-                                    applyFavoritePurchase(item.id, e.target.value)
-                                  }
-                                  className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
-                                >
-                                  <option value="">Choose favorite purchase</option>
-                                  {favoritePurchases.map((favorite) => (
-                                    <option key={favorite.id} value={favorite.id}>
-                                      {favorite.name} • {favorite.category} •{" "}
-                                      {favorite.grams}g
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            )}
+                          <div className="shrink-0 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-400">
+                            {isExpanded ? "−" : "+"}
+                          </div>
+                        </button>
 
-                            <div>
-                              <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                                Product Name
-                              </label>
-                              <input
-                                placeholder="Enter product name"
-                                value={item.productName}
-                                onChange={(e) =>
-                                  updateItem(item.id, "productName", e.target.value)
-                                }
-                                className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
-                              />
+                        {isExpanded && (
+                          <div className="border-t border-white/10 px-3 pb-3 pt-3">
+                            <div className="mb-3 flex items-center justify-end">
+                              {items.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeItem(item.id)}
+                                  className="rounded-xl border border-red-500/20 bg-red-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-red-300 transition hover:bg-red-500/15"
+                                >
+                                  Remove
+                                </button>
+                              )}
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                                  Category
-                                </label>
-                                <select
-                                  value={item.category}
-                                  onChange={(e) =>
-                                    updateItem(item.id, "category", e.target.value)
-                                  }
-                                  className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
-                                >
-                                  <option value="">Select category</option>
-                                  <option value="flower">Flower</option>
-                                  <option value="pre-roll">Pre-Roll</option>
-                                  <option value="edible">Edible</option>
-                                  <option value="vape">Vape</option>
-                                  <option value="concentrate">Concentrate</option>
-                                </select>
-                              </div>
+                            <div className="space-y-3">
+                              {favoritePurchases.length > 0 && (
+                                <div>
+                                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                                    Favorite Purchase
+                                  </label>
+                                  <select
+                                    defaultValue=""
+                                    onChange={(e) =>
+                                      applyFavoritePurchase(item.id, e.target.value)
+                                    }
+                                    className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                                  >
+                                    <option value="">Choose favorite purchase</option>
+                                    {favoritePurchases.map((favorite) => (
+                                      <option key={favorite.id} value={favorite.id}>
+                                        {favorite.name} • {favorite.category} •{" "}
+                                        {favorite.grams}g
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
 
                               <div>
                                 <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                                  Grams
+                                  Product Name
                                 </label>
                                 <input
-                                  placeholder="0.0"
-                                  type="number"
-                                  step="0.01"
-                                  value={item.grams}
+                                  placeholder="Enter product name"
+                                  value={item.productName}
                                   onChange={(e) =>
-                                    updateItem(item.id, "grams", e.target.value)
+                                    updateItem(item.id, "productName", e.target.value)
                                   }
                                   className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
                                 />
                               </div>
+
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                                    Category
+                                  </label>
+                                  <select
+                                    value={item.category}
+                                    onChange={(e) =>
+                                      updateItem(item.id, "category", e.target.value)
+                                    }
+                                    className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                                  >
+                                    <option value="">Select category</option>
+                                    <option value="flower">Flower</option>
+                                    <option value="pre-roll">Pre-Roll</option>
+                                    <option value="edible">Edible</option>
+                                    <option value="vape">Vape</option>
+                                    <option value="concentrate">Concentrate</option>
+                                  </select>
+                                </div>
+
+                                <div>
+                                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                                    Grams
+                                  </label>
+                                  <input
+                                    placeholder="0.0"
+                                    type="number"
+                                    step="0.01"
+                                    value={item.grams}
+                                    onChange={(e) =>
+                                      updateItem(item.id, "grams", e.target.value)
+                                    }
+                                    className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
+                                  />
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
+                        )}
+                      </div>
+                    )
+                  })}
 
-                <button
-                  type="button"
-                  onClick={addAnotherItem}
-                  className="w-full rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-3 text-sm font-semibold text-emerald-400 transition hover:bg-emerald-500/15"
-                >
-                  + Add Item
-                </button>
+                  <button
+                    type="button"
+                    onClick={addAnotherItem}
+                    className="w-full rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-3 text-sm font-semibold text-emerald-400 transition hover:bg-emerald-500/15"
+                  >
+                    + Add Item
+                  </button>
+                </div>
               </div>
+
+              <canvas ref={canvasRef} className="hidden" />
             </div>
-
-            <canvas ref={canvasRef} className="hidden" />
           </div>
-        </div>
 
-        <button
-          type="submit"
-          className="w-full rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
-        >
-          Save Purchase
-        </button>
-      </form>
-    </div>
+          <button
+            type="submit"
+            className="w-full rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
+          >
+            Save Purchase
+          </button>
+        </form>
+      </div>
+    </>
   )
 }

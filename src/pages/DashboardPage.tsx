@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
 import { usePurchaseStore } from "../features/purchases/purchaseStore"
+import PageIntroPopup from "../components/PageIntroPopup"
 
 const ALLOTMENT_LIMIT = 84.03
 
@@ -190,114 +191,122 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-3">
-      <section className="overflow-hidden rounded-3xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/15 via-slate-950 to-slate-900 p-3 shadow-lg shadow-emerald-950/20">
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5">
-            <p className="text-[10px] uppercase tracking-wide text-slate-400">
-              Current Grams
-            </p>
-            <p className="mt-1 text-xl font-semibold text-white">
-              {remainingGrams}g
-            </p>
-            <p className="mt-1 text-[10px] text-slate-400">
-              Available right now
-            </p>
-          </div>
+    <>
+      <PageIntroPopup
+        pageKey="dashboard"
+        title="Welcome to your Dashboard"
+        description="This page gives you a quick view of your current allotment, available grams, and recent activity. Use it as your home base to check your status and jump into Smart Planner or Add Purchase."
+      />
 
-          <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5 text-right">
-            <p className="text-[10px] uppercase tracking-wide text-slate-400">
-              Used Grams
-            </p>
-            <p className="mt-1 text-xl font-semibold text-white">
-              {usedGrams}g
-            </p>
-            <p className="mt-1 text-[10px] text-slate-400">Active window</p>
-          </div>
-        </div>
-
-        <div className="mt-3">
-          <div className="mb-1.5 flex items-center justify-between text-[10px] text-slate-400">
-            <span>31-day allotment usage</span>
-            <span>{Math.round(percentUsed)}%</span>
-          </div>
-
-          <div className="h-2 overflow-hidden rounded-full bg-slate-800/90">
-            <div
-              className="h-full rounded-full bg-emerald-400 transition-all"
-              style={{ width: `${percentUsed}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5">
-            <p className="text-[10px] uppercase tracking-wide text-slate-400">
-              Total Purchases
-            </p>
-            <p className="mt-1 text-base font-semibold text-white">
-              {purchaseCount}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5">
-            <p className="text-[10px] uppercase tracking-wide text-slate-400">
-              Avg Purchase
-            </p>
-            <p className="mt-1 text-base font-semibold text-white">
-              {avgPurchase}g
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-3xl border border-white/10 bg-slate-900/90 p-3 shadow-lg shadow-black/20">
-        <div className="mb-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-400">
-            Calendar View
-          </p>
-          <h3 className="mt-1 text-base font-semibold text-white">
-            {getMonthName(today)}
-          </h3>
-          <p className="mt-1 text-[11px] text-slate-400">
-            Track allotment used and returning by date.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-7 gap-1 text-center text-[9px] font-medium uppercase tracking-wide text-slate-500">
-          <div>Sun</div>
-          <div>Mon</div>
-          <div>Tue</div>
-          <div>Wed</div>
-          <div>Thu</div>
-          <div>Fri</div>
-          <div>Sat</div>
-        </div>
-
-        <div className="mt-2 grid grid-cols-7 gap-1">{calendarCells}</div>
-
-        <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/70 p-2.5">
-          <div className="space-y-1.5">
-            <div className="flex items-start gap-2">
-              <span className="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 text-[9px] font-bold text-emerald-400">
-                +
-              </span>
-              <p className="text-[11px] text-slate-300">
-                Tap green + to see allotment returning.
+      <div className="space-y-3">
+        <section className="overflow-hidden rounded-3xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/15 via-slate-950 to-slate-900 p-3 shadow-lg shadow-emerald-950/20">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wide text-slate-400">
+                Current Grams
+              </p>
+              <p className="mt-1 text-xl font-semibold text-white">
+                {remainingGrams}g
+              </p>
+              <p className="mt-1 text-[10px] text-slate-400">
+                Available right now
               </p>
             </div>
 
-            <div className="flex items-start gap-2">
-              <span className="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-red-500/30 bg-red-500/15 text-[9px] font-bold text-red-400">
-                −
-              </span>
-              <p className="text-[11px] text-slate-300">
-                Tap red − to see allotment used.
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5 text-right">
+              <p className="text-[10px] uppercase tracking-wide text-slate-400">
+                Used Grams
+              </p>
+              <p className="mt-1 text-xl font-semibold text-white">
+                {usedGrams}g
+              </p>
+              <p className="mt-1 text-[10px] text-slate-400">Active window</p>
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <div className="mb-1.5 flex items-center justify-between text-[10px] text-slate-400">
+              <span>31-day allotment usage</span>
+              <span>{Math.round(percentUsed)}%</span>
+            </div>
+
+            <div className="h-2 overflow-hidden rounded-full bg-slate-800/90">
+              <div
+                className="h-full rounded-full bg-emerald-400 transition-all"
+                style={{ width: `${percentUsed}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wide text-slate-400">
+                Total Purchases
+              </p>
+              <p className="mt-1 text-base font-semibold text-white">
+                {purchaseCount}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wide text-slate-400">
+                Avg Purchase
+              </p>
+              <p className="mt-1 text-base font-semibold text-white">
+                {avgPurchase}g
               </p>
             </div>
           </div>
-        </div>
-      </section>
-    </div>
+        </section>
+
+        <section className="rounded-3xl border border-white/10 bg-slate-900/90 p-3 shadow-lg shadow-black/20">
+          <div className="mb-2">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-400">
+              Calendar View
+            </p>
+            <h3 className="mt-1 text-base font-semibold text-white">
+              {getMonthName(today)}
+            </h3>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Track allotment used and returning by date.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 text-center text-[9px] font-medium uppercase tracking-wide text-slate-500">
+            <div>Sun</div>
+            <div>Mon</div>
+            <div>Tue</div>
+            <div>Wed</div>
+            <div>Thu</div>
+            <div>Fri</div>
+            <div>Sat</div>
+          </div>
+
+          <div className="mt-2 grid grid-cols-7 gap-1">{calendarCells}</div>
+
+          <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/70 p-2.5">
+            <div className="space-y-1.5">
+              <div className="flex items-start gap-2">
+                <span className="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 text-[9px] font-bold text-emerald-400">
+                  +
+                </span>
+                <p className="text-[11px] text-slate-300">
+                  Tap green + to see allotment returning.
+                </p>
+              </div>
+
+              <div className="flex items-start gap-2">
+                <span className="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-red-500/30 bg-red-500/15 text-[9px] font-bold text-red-400">
+                  −
+                </span>
+                <p className="text-[11px] text-slate-300">
+                  Tap red − to see allotment used.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </>
   )
 }

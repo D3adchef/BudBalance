@@ -7,6 +7,7 @@ import TimelinePage from "../pages/TimelinePage"
 import AddPurchasePage from "../pages/AddPurchasePage"
 import PurchaseHistoryPage from "../pages/PurchaseHistoryPage"
 import ToolsPage from "../pages/ToolsPage"
+import FirstTimeAllotmentSetupPage from "../pages/FirstTimeAllotmentSetupPage"
 
 import AppShell from "../components/AppShell"
 import ProtectedRoute from "../components/ProtectedRoute"
@@ -17,6 +18,15 @@ export default function AppRouter() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
+
+        <Route
+          path="/first-time-allotment-setup"
+          element={
+            <ProtectedRoute>
+              <FirstTimeAllotmentSetupPage />
+            </ProtectedRoute>
+          }
+        />
 
         <Route
           path="/"
