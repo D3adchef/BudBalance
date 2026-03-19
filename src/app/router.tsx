@@ -12,6 +12,43 @@ import FirstTimeAllotmentSetupPage from "../pages/FirstTimeAllotmentSetupPage"
 import AppShell from "../components/AppShell"
 import ProtectedRoute from "../components/ProtectedRoute"
 
+import { useAuthStore } from "../features/auth/authStore"
+import { useAllotmentStore } from "../features/allotment/allotmentStore"
+
+function SetupProtectedApp({ children }: { children: React.ReactNode }) {
+  const currentUser = useAuthStore((state) => state.currentUser)
+  const hasCompletedInitialSetup = useAllotmentStore(
+    (state) => state.allotment.hasCompletedInitialSetup
+  )
+
+  if (!currentUser) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (!hasCompletedInitialSetup) {
+    return <Navigate to="/first-time-allotment-setup" replace />
+  }
+
+  return <>{children}</>
+}
+
+function SetupPageGuard() {
+  const currentUser = useAuthStore((state) => state.currentUser)
+  const hasCompletedInitialSetup = useAllotmentStore(
+    (state) => state.allotment.hasCompletedInitialSetup
+  )
+
+  if (!currentUser) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (hasCompletedInitialSetup) {
+    return <Navigate to="/" replace />
+  }
+
+  return <FirstTimeAllotmentSetupPage />
+}
+
 export default function AppRouter() {
   return (
     <BrowserRouter>
@@ -23,7 +60,7 @@ export default function AppRouter() {
           path="/first-time-allotment-setup"
           element={
             <ProtectedRoute>
-              <FirstTimeAllotmentSetupPage />
+              <SetupPageGuard />
             </ProtectedRoute>
           }
         />
@@ -32,9 +69,11 @@ export default function AppRouter() {
           path="/"
           element={
             <ProtectedRoute>
-              <AppShell>
-                <DashboardPage />
-              </AppShell>
+              <SetupProtectedApp>
+                <AppShell>
+                  <DashboardPage />
+                </AppShell>
+              </SetupProtectedApp>
             </ProtectedRoute>
           }
         />
@@ -43,9 +82,11 @@ export default function AppRouter() {
           path="/timeline"
           element={
             <ProtectedRoute>
-              <AppShell>
-                <TimelinePage />
-              </AppShell>
+              <SetupProtectedApp>
+                <AppShell>
+                  <TimelinePage />
+                </AppShell>
+              </SetupProtectedApp>
             </ProtectedRoute>
           }
         />
@@ -54,9 +95,11 @@ export default function AppRouter() {
           path="/add-purchase"
           element={
             <ProtectedRoute>
-              <AppShell>
-                <AddPurchasePage />
-              </AppShell>
+              <SetupProtectedApp>
+                <AppShell>
+                  <AddPurchasePage />
+                </AppShell>
+              </SetupProtectedApp>
             </ProtectedRoute>
           }
         />
@@ -65,9 +108,11 @@ export default function AppRouter() {
           path="/purchase-history"
           element={
             <ProtectedRoute>
-              <AppShell>
-                <PurchaseHistoryPage />
-              </AppShell>
+              <SetupProtectedApp>
+                <AppShell>
+                  <PurchaseHistoryPage />
+                </AppShell>
+              </SetupProtectedApp>
             </ProtectedRoute>
           }
         />
@@ -76,9 +121,11 @@ export default function AppRouter() {
           path="/tools"
           element={
             <ProtectedRoute>
-              <AppShell>
-                <ToolsPage />
-              </AppShell>
+              <SetupProtectedApp>
+                <AppShell>
+                  <ToolsPage />
+                </AppShell>
+              </SetupProtectedApp>
             </ProtectedRoute>
           }
         />

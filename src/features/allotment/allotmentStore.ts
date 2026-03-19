@@ -1,0 +1,151 @@
+import { create } from "zustand"
+import { useAuthStore } from "../auth/authStore"
+
+export type SetupMode = "manual" | "purchases" | null
+
+export type UserAllotmentState = {
+  manualStartingAllotment: number | null
+  manualSetupCompletedAt: string | null
+  setupMode: SetupMode
+  hasCompletedInitialSetup: boolean
+}
+
+type AllotmentStore = {
+  allotment: UserAllotmentState
+  loadAllotmentForCurrentUser: () => void
+  setManualStartingAllotment: (grams: number) => void
+  setSetupMode: (mode: SetupMode) => void
+  completeInitialSetup: () => void
+  resetAllotmentSetup: () => void
+}
+
+const DEFAULT_ALLOTMENT_STATE: UserAllotmentState = {
+  manualStartingAllotment: null,
+  manualSetupCompletedAt: null,
+  setupMode: null,
+  hasCompletedInitialSetup: false,
+}
+
+function getAllotmentStorageKey(username: string) {
+  return `budbalance-allotment-${username.toLowerCase()}`
+}
+
+function normalizeAllotment(raw: any): UserAllotmentState {
+  const parsedManual =
+    typeof raw?.manualStartingAllotment === "number" &&
+    raw.manualStartingAllotment >= 0
+      ? raw.manualStartingAllotment
+      : null
+
+  const parsedManualSetupCompletedAt =
+    typeof raw?.manualSetupCompletedAt === "string" &&
+    raw.manualSetupCompletedAt.trim().length > 0
+      ? raw.manualSetupCompletedAt
+      : null
+
+  const parsedMode: SetupMode =
+    raw?.setupMode === "manual" || raw?.setupMode === "purchases"
+      ? raw.setupMode
+      : null
+
+  const parsedCompleted =
+    typeof raw?.hasCompletedInitialSetup === "boolean"
+      ? raw.hasCompletedInitialSetup
+      : false
+
+  return {
+    manualStartingAllotment: parsedManual,
+    manualSetupCompletedAt: parsedManualSetupCompletedAt,
+    setupMode: parsedMode,
+    hasCompletedInitialSetup: parsedCompleted,
+  }
+}
+
+function loadAllotment(username: string): UserAllotmentState {
+  const saved = localStorage.getItem(getAllotmentStorageKey(username))
+
+  if (!saved) return DEFAULT_ALLOTMENT_STATE
+
+  try {
+    const parsed = JSON.parse(saved)
+    return normalizeAllotment(parsed)
+  } catch {
+    return DEFAULT_ALLOTMENT_STATE
+  }
+}
+
+function saveAllotment(username: string, allotment: UserAllotmentState) {
+  localStorage.setItem(getAllotmentStorageKey(username), JSON.stringify(allotment))
+}
+
+export const useAllotmentStore = create<AllotmentStore>((set, get) => ({
+  allotment: DEFAULT_ALLOTMENT_STATE,
+
+  loadAllotmentForCurrentUser: () => {
+    const currentUser = useAuthStore.getState().currentUser
+
+    if (!currentUser) {
+      set({ allotment: DEFAULT_ALLOTMENT_STATE })
+      return
+    }
+
+    const userAllotment = loadAllotment(currentUser)
+    saveAllotment(currentUser, userAllotment)
+    set({ allotment: userAllotment })
+  },
+
+  setManualStartingAllotment: (grams) => {
+    const currentUser = useAuthStore.getState().currentUser
+    const safeGrams = Number(grams)
+
+    if (!currentUser || Number.isNaN(safeGrams) || safeGrams < 0) return
+
+    const updatedAllotment: UserAllotmentState = {
+      ...get().allotment,
+      manualStartingAllotment: safeGrams,
+      manualSetupCompletedAt: new Date().toISOString(),
+      setupMode: "manual",
+    }
+
+    saveAllotment(currentUser, updatedAllotment)
+    set({ allotment: updatedAllotment })
+  },
+
+  setSetupMode: (mode) => {
+    const currentUser = useAuthStore.getState().currentUser
+    if (!currentUser) return
+
+    const updatedAllotment: UserAllotmentState = {
+      ...get().allotment,
+      setupMode: mode,
+    }
+
+    saveAllotment(currentUser, updatedAllotment)
+    set({ allotment: updatedAllotment })
+  },
+
+  completeInitialSetup: () => {
+    const currentUser = useAuthStore.getState().currentUser
+    if (!currentUser) return
+
+    const updatedAllotment: UserAllotmentState = {
+      ...get().allotment,
+      hasCompletedInitialSetup: true,
+    }
+
+    saveAllotment(currentUser, updatedAllotment)
+    set({ allotment: updatedAllotment })
+  },
+
+  resetAllotmentSetup: () => {
+    const currentUser = useAuthStore.getState().currentUser
+
+    if (!currentUser) {
+      set({ allotment: DEFAULT_ALLOTMENT_STATE })
+      return
+    }
+
+    saveAllotment(currentUser, DEFAULT_ALLOTMENT_STATE)
+    set({ allotment: DEFAULT_ALLOTMENT_STATE })
+  },
+}))

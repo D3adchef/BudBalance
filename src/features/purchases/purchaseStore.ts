@@ -8,6 +8,8 @@ export type PurchaseItem = {
   grams: number
 }
 
+export type PurchaseEntryMode = "setup" | "manual" | "scan" | "historical"
+
 export type Purchase = {
   id: string
   purchaseDate: string
@@ -15,6 +17,8 @@ export type Purchase = {
   notes: string
   source: string
   items: PurchaseItem[]
+  countsTowardAllotment: boolean
+  entryMode: PurchaseEntryMode
 }
 
 type PurchaseStore = {
@@ -28,22 +32,35 @@ function getPurchaseStorageKey(username: string) {
   return `budbalance-purchases-${username.toLowerCase()}`
 }
 
+function normalizeEntryMode(raw: any): PurchaseEntryMode {
+  if (
+    raw === "setup" ||
+    raw === "manual" ||
+    raw === "scan" ||
+    raw === "historical"
+  ) {
+    return raw
+  }
+
+  return "manual"
+}
+
 function normalizePurchase(raw: any): Purchase {
-  if (Array.isArray(raw.items)) {
-    return {
-      id: raw.id,
-      purchaseDate: raw.purchaseDate ?? "",
-      dispensary: raw.dispensary ?? "",
-      notes: raw.notes ?? "",
-      source: raw.source ?? "manual",
-      items: raw.items.map((item: any) => ({
+  const normalizedItems: PurchaseItem[] = Array.isArray(raw.items)
+    ? raw.items.map((item: any) => ({
         id: item.id ?? crypto.randomUUID(),
         productName: item.productName ?? "",
         category: item.category ?? "",
         grams: Number(item.grams ?? 0),
-      })),
-    }
-  }
+      }))
+    : [
+        {
+          id: crypto.randomUUID(),
+          productName: raw.productName ?? "",
+          category: raw.category ?? "",
+          grams: Number(raw.grams ?? 0),
+        },
+      ]
 
   return {
     id: raw.id ?? crypto.randomUUID(),
@@ -51,14 +68,12 @@ function normalizePurchase(raw: any): Purchase {
     dispensary: raw.dispensary ?? "",
     notes: raw.notes ?? "",
     source: raw.source ?? "manual",
-    items: [
-      {
-        id: crypto.randomUUID(),
-        productName: raw.productName ?? "",
-        category: raw.category ?? "",
-        grams: Number(raw.grams ?? 0),
-      },
-    ],
+    items: normalizedItems,
+    countsTowardAllotment:
+      typeof raw.countsTowardAllotment === "boolean"
+        ? raw.countsTowardAllotment
+        : true,
+    entryMode: normalizeEntryMode(raw.entryMode ?? raw.source),
   }
 }
 
@@ -96,7 +111,8 @@ export const usePurchaseStore = create<PurchaseStore>((set, get) => ({
 
     if (!currentUser) return
 
-    const updatedPurchases = [purchase, ...get().purchases]
+    const normalizedPurchase = normalizePurchase(purchase)
+    const updatedPurchases = [normalizedPurchase, ...get().purchases]
 
     savePurchases(currentUser, updatedPurchases)
     set({ purchases: updatedPurchases })

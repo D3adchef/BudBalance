@@ -25,12 +25,23 @@ type SignupInput = {
   password: string
 }
 
+type UpdateCurrentUserInput = {
+  firstName: string
+  lastName: string
+  email: string
+  mobile: string
+}
+
 type AuthStore = {
   users: UserAccount[]
   currentUser: string | null
   signup: (data: SignupInput) => { success: boolean; message: string }
   login: (username: string, password: string) => { success: boolean; message: string }
   logout: () => void
+  updateCurrentUser: (
+    data: UpdateCurrentUserInput
+  ) => { success: boolean; message: string }
+  deleteCurrentUser: () => void
 }
 
 const USERS_STORAGE_KEY = "budbalance-users"
@@ -49,6 +60,20 @@ function normalizeUser(raw: any): UserAccount {
     password: String(raw?.password ?? "").trim(),
     createdAt: String(raw?.createdAt ?? new Date().toISOString()).trim(),
   }
+}
+
+function isStrongPassword(password: string) {
+  const hasMinLength = password.length >= 8
+  const hasUppercase = /[A-Z]/.test(password)
+  const hasNumber = /\d/.test(password)
+  const hasSpecialCharacter = /[^A-Za-z0-9]/.test(password)
+
+  return (
+    hasMinLength &&
+    hasUppercase &&
+    hasNumber &&
+    hasSpecialCharacter
+  )
 }
 
 function loadUsers(): UserAccount[] {
@@ -110,6 +135,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       }
     }
 
+    if (!isStrongPassword(newUser.password)) {
+      return {
+        success: false,
+        message:
+          "Password must be at least 8 characters and include 1 uppercase letter, 1 number, and 1 special character.",
+      }
+    }
+
     const existingUser = get().users.find(
       (user) => user.username.toLowerCase() === newUser.username.toLowerCase()
     )
@@ -163,5 +196,56 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   logout: () => {
     saveCurrentUser(null)
     set({ currentUser: null })
+  },
+
+  updateCurrentUser: (data) => {
+    const currentUser = get().currentUser
+    if (!currentUser) {
+      return { success: false, message: "No current user found." }
+    }
+
+    const trimmedLastName = data.lastName.trim()
+    const trimmedEmail = data.email.trim()
+
+    if (!trimmedLastName || !trimmedEmail) {
+      return {
+        success: false,
+        message: "Last name and email are required.",
+      }
+    }
+
+    const updatedUsers = get().users.map((user) =>
+      user.username.toLowerCase() === currentUser.toLowerCase()
+        ? {
+            ...user,
+            firstName: data.firstName.trim(),
+            lastName: trimmedLastName,
+            email: trimmedEmail,
+            mobile: data.mobile.trim(),
+          }
+        : user
+    )
+
+    saveUsers(updatedUsers)
+    set({ users: updatedUsers })
+
+    return { success: true, message: "Account updated successfully." }
+  },
+
+  deleteCurrentUser: () => {
+    const currentUser = get().currentUser
+    if (!currentUser) return
+
+    const updatedUsers = get().users.filter(
+      (user) => user.username.toLowerCase() !== currentUser.toLowerCase()
+    )
+
+    saveUsers(updatedUsers)
+    saveCurrentUser(null)
+
+    set({
+      users: updatedUsers,
+      currentUser: null,
+    })
   },
 }))

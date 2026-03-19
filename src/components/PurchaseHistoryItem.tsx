@@ -12,6 +12,8 @@ type PurchaseHistoryItemProps = {
   items: PurchaseLineItem[]
   isOpen: boolean
   onToggle: () => void
+  countsTowardAllotment?: boolean
+  entryMode?: string
 }
 
 function getCategoryStyles(category: string) {
@@ -35,9 +37,44 @@ function getTotalGrams(items: PurchaseLineItem[]) {
   return Math.round(items.reduce((total, item) => total + item.grams, 0) * 100) / 100
 }
 
+function getEntryModeLabel(entryMode?: string) {
+  switch (entryMode) {
+    case "setup":
+      return "Setup Entry"
+    case "scan":
+      return "Scanned Entry"
+    case "historical":
+      return "History Only"
+    case "manual":
+    default:
+      return "Manual Entry"
+  }
+}
+
+function getSourceLabel(source: string) {
+  switch (source) {
+    case "scan":
+      return "Scanned"
+    case "manual":
+    default:
+      return "Manual"
+  }
+}
+
 export default function PurchaseHistoryItem(props: PurchaseHistoryItemProps) {
-  const { purchaseDate, dispensary, source, items, isOpen, onToggle } = props
+  const {
+    purchaseDate,
+    dispensary,
+    source,
+    items,
+    isOpen,
+    onToggle,
+    countsTowardAllotment = true,
+    entryMode = "manual",
+  } = props
+
   const totalGrams = getTotalGrams(items)
+  const dispensaryLabel = dispensary?.trim() || "Dispensary not entered"
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-700 bg-slate-800">
@@ -48,24 +85,34 @@ export default function PurchaseHistoryItem(props: PurchaseHistoryItemProps) {
       >
         <div className="min-w-0">
           <p className="text-sm font-semibold text-white">{purchaseDate}</p>
+          <p className="mt-1 truncate text-xs text-slate-400">
+            {dispensaryLabel}
+          </p>
         </div>
 
-        <div className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-slate-300">
-          {isOpen ? "−" : "+"}
+        <div className="shrink-0 text-right">
+          <p className="text-sm font-bold text-emerald-400">{totalGrams}g</p>
+          <div className="mt-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-slate-300">
+            {isOpen ? "−" : "+"}
+          </div>
         </div>
       </button>
 
       {isOpen && (
         <div className="border-t border-slate-700 px-4 py-4">
           <div className="flex items-start justify-between gap-4">
-            <div>
+            <div className="min-w-0">
               <h3 className="text-base font-semibold text-white">
-                {dispensary || "Dispensary not entered"}
+                {dispensaryLabel}
               </h3>
-              <p className="mt-1 text-xs text-slate-400">{source}</p>
+
+              <p className="mt-2 text-xs leading-5 text-slate-400">
+                {countsTowardAllotment ? "Counts Toward Allotment" : "History Only"} •{" "}
+                {getEntryModeLabel(entryMode)} • {getSourceLabel(source)}
+              </p>
             </div>
 
-            <div className="text-right">
+            <div className="shrink-0 text-right">
               <p className="text-lg font-bold text-emerald-400">{totalGrams}g</p>
               <p className="text-xs text-slate-400">total</p>
             </div>

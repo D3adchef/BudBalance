@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { usePurchaseStore } from "../features/purchases/purchaseStore"
+import { useSettingsStore } from "../features/settings/settingsStore"
+import { useAllotmentStore } from "../features/allotment/allotmentStore"
 import PageIntroPopup from "../components/PageIntroPopup"
-
-const ALLOTMENT_LIMIT = 84.03
 
 type CalendarEvent = {
   type: "return" | "purchase"
@@ -43,11 +43,32 @@ function getFirstDayOfMonth(year: number, month: number) {
 export default function DashboardPage() {
   const purchases = usePurchaseStore((state) => state.purchases)
 
-  const usedGrams = useMemo(() => {
+  const settings = useSettingsStore((state) => state.settings)
+  const loadSettingsForCurrentUser = useSettingsStore(
+    (state) => state.loadSettingsForCurrentUser
+  )
+
+  const allotment = useAllotmentStore((state) => state.allotment)
+  const loadAllotmentForCurrentUser = useAllotmentStore(
+    (state) => state.loadAllotmentForCurrentUser
+  )
+
+  useEffect(() => {
+    loadSettingsForCurrentUser()
+    loadAllotmentForCurrentUser()
+  }, [loadSettingsForCurrentUser, loadAllotmentForCurrentUser])
+
+  const allotmentLimit = settings.allotmentLimit
+
+  const purchasesThatCount = useMemo(() => {
+    return purchases.filter((purchase) => purchase.countsTowardAllotment)
+  }, [purchases])
+
+  const usedGramsFromPurchases = useMemo(() => {
     const today = new Date()
 
     return roundToTwo(
-      purchases.reduce((total, purchase) => {
+      purchasesThatCount.reduce((total, purchase) => {
         const purchaseDate = createLocalDate(purchase.purchaseDate)
         const ageInMs = today.getTime() - purchaseDate.getTime()
         const ageInDays = Math.floor(ageInMs / (1000 * 60 * 60 * 24))
@@ -59,13 +80,29 @@ export default function DashboardPage() {
         return total
       }, 0)
     )
-  }, [purchases])
+  }, [purchasesThatCount])
 
-  const remainingGrams = roundToTwo(Math.max(ALLOTMENT_LIMIT - usedGrams, 0))
-  const percentUsed = Math.min((usedGrams / ALLOTMENT_LIMIT) * 100, 100)
+  const isUsingManualDashboardValues =
+    allotment.setupMode === "manual" &&
+    allotment.manualStartingAllotment !== null &&
+    purchasesThatCount.length === 0
+
+  const usedGrams = isUsingManualDashboardValues
+    ? roundToTwo(Math.max(allotmentLimit - allotment.manualStartingAllotment!, 0))
+    : usedGramsFromPurchases
+
+  const remainingGrams = isUsingManualDashboardValues
+    ? roundToTwo(allotment.manualStartingAllotment!)
+    : roundToTwo(Math.max(allotmentLimit - usedGramsFromPurchases, 0))
+
+  const percentUsed =
+    allotmentLimit > 0 ? Math.min((usedGrams / allotmentLimit) * 100, 100) : 0
+
   const purchaseCount = purchases.length
   const avgPurchase =
-    purchaseCount > 0 ? roundToTwo(usedGrams / purchaseCount).toFixed(2) : "0.00"
+    purchasesThatCount.length > 0
+      ? roundToTwo(usedGramsFromPurchases / purchasesThatCount.length).toFixed(2)
+      : "0.00"
 
   const today = new Date()
   const currentYear = today.getFullYear()
@@ -76,7 +113,7 @@ export default function DashboardPage() {
   const calendarEvents = useMemo(() => {
     const eventMap: Record<string, CalendarEvent[]> = {}
 
-    purchases.forEach((purchase) => {
+    purchasesThatCount.forEach((purchase) => {
       const totalGrams = getPurchaseTotalGrams(purchase.items || [])
       const purchaseDate = createLocalDate(purchase.purchaseDate)
       const purchaseKey = formatDateKey(purchaseDate)
@@ -99,7 +136,7 @@ export default function DashboardPage() {
     })
 
     return eventMap
-  }, [purchases])
+  }, [purchasesThatCount])
 
   const [activeBubble, setActiveBubble] = useState<{
     dateKey: string
@@ -257,6 +294,18 @@ export default function DashboardPage() {
               </p>
             </div>
           </div>
+
+          {allotment.setupMode === "manual" &&
+            allotment.manualStartingAllotment !== null &&
+            purchasesThatCount.length === 0 && (
+              <div className="mt-3 rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-3">
+                <p className="text-xs text-slate-300">
+                  You are currently using your manual starting allotment as your
+                  baseline. Historical purchases that do not count toward allotment
+                  will stay visible in purchase history without reducing this balance.
+                </p>
+              </div>
+            )}
         </section>
 
         <section className="rounded-3xl border border-white/10 bg-slate-900/90 p-3 shadow-lg shadow-black/20">

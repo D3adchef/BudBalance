@@ -2,6 +2,20 @@ import { useState } from "react"
 import { useNavigate, Link } from "react-router-dom"
 import { useAuthStore } from "../features/auth/authStore"
 
+function isStrongPassword(password: string) {
+  const hasMinLength = password.length >= 8
+  const hasUppercase = /[A-Z]/.test(password)
+  const hasNumber = /\d/.test(password)
+  const hasSpecialCharacter = /[^A-Za-z0-9]/.test(password)
+
+  return (
+    hasMinLength &&
+    hasUppercase &&
+    hasNumber &&
+    hasSpecialCharacter
+  )
+}
+
 export default function SignupPage() {
   const navigate = useNavigate()
   const signup = useAuthStore((state) => state.signup)
@@ -20,6 +34,13 @@ export default function SignupPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!isStrongPassword(password)) {
+      alert(
+        "Password must be at least 8 characters and include 1 uppercase letter, 1 number, and 1 special character."
+      )
+      return
+    }
 
     if (password !== confirmPassword) {
       alert("Passwords do not match.")
@@ -209,6 +230,11 @@ export default function SignupPage() {
               {showPassword ? "🙈" : "👁️"}
             </button>
           </div>
+
+          <p className="mt-2 text-[11px] leading-4 text-slate-500">
+            Password must be at least 8 characters and include 1 uppercase
+            letter, 1 number, and 1 special character.
+          </p>
         </div>
 
         <div>

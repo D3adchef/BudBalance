@@ -3,9 +3,12 @@ import { useNavigate } from "react-router-dom"
 import PageIntroPopup from "../components/PageIntroPopup"
 import { useAuthStore } from "../features/auth/authStore"
 import { useFavoritesStore } from "../features/favorites/favoritesStore"
+import { useSettingsStore } from "../features/settings/settingsStore"
+import { useAllotmentStore } from "../features/allotment/allotmentStore"
 
 type OpenSection =
   | "account"
+  | "allotment"
   | "dispensaries"
   | "purchases"
   | "help"
@@ -157,6 +160,8 @@ export default function ToolsPage() {
   const logout = useAuthStore((state) => state.logout)
   const users = useAuthStore((state) => state.users)
   const currentUser = useAuthStore((state) => state.currentUser)
+  const updateCurrentUser = useAuthStore((state) => state.updateCurrentUser)
+  const deleteCurrentUser = useAuthStore((state) => state.deleteCurrentUser)
 
   const favoriteDispensaries = useFavoritesStore(
     (state) => state.favoriteDispensaries
@@ -180,6 +185,18 @@ export default function ToolsPage() {
     (state) => state.removeFavoritePurchase
   )
 
+  const allotmentLimit = useSettingsStore(
+    (state) => state.settings.allotmentLimit
+  )
+  const loadSettingsForCurrentUser = useSettingsStore(
+    (state) => state.loadSettingsForCurrentUser
+  )
+
+  const allotment = useAllotmentStore((state) => state.allotment)
+  const loadAllotmentForCurrentUser = useAllotmentStore(
+    (state) => state.loadAllotmentForCurrentUser
+  )
+
   const [openSection, setOpenSection] = useState<OpenSection>(null)
   const [openHelp, setOpenHelp] = useState<HelpKey>(null)
   const [selectedGlossaryTerm, setSelectedGlossaryTerm] =
@@ -193,9 +210,21 @@ export default function ToolsPage() {
       grams: "",
     })
 
+  const [isEditingAccount, setIsEditingAccount] = useState(false)
+  const [editFirstName, setEditFirstName] = useState("")
+  const [editLastName, setEditLastName] = useState("")
+  const [editEmail, setEditEmail] = useState("")
+  const [editMobile, setEditMobile] = useState("")
+
   useEffect(() => {
     loadFavoritesForCurrentUser()
-  }, [loadFavoritesForCurrentUser])
+    loadSettingsForCurrentUser()
+    loadAllotmentForCurrentUser()
+  }, [
+    loadFavoritesForCurrentUser,
+    loadSettingsForCurrentUser,
+    loadAllotmentForCurrentUser,
+  ])
 
   const currentUserRecord = useMemo(() => {
     if (!currentUser) return null
@@ -206,6 +235,15 @@ export default function ToolsPage() {
       ) ?? null
     )
   }, [users, currentUser])
+
+  useEffect(() => {
+    if (!currentUserRecord) return
+
+    setEditFirstName(currentUserRecord.firstName || "")
+    setEditLastName(currentUserRecord.lastName || "")
+    setEditEmail(currentUserRecord.email || "")
+    setEditMobile(currentUserRecord.mobile || "")
+  }, [currentUserRecord])
 
   function toggleSection(section: Exclude<OpenSection, null>) {
     setOpenSection((prev) => (prev === section ? null : section))
@@ -243,10 +281,48 @@ export default function ToolsPage() {
     })
   }
 
+  function handleSaveAccount() {
+    const result = updateCurrentUser({
+      firstName: editFirstName,
+      lastName: editLastName,
+      email: editEmail,
+      mobile: editMobile,
+    })
+
+    if (!result.success) {
+      alert(result.message)
+      return
+    }
+
+    setIsEditingAccount(false)
+  }
+
+  function handleDeleteAccount() {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this account? This cannot be undone."
+    )
+
+    if (!confirmed) return
+
+    deleteCurrentUser()
+    navigate("/login")
+  }
+
   function handleLogout() {
     logout()
     navigate("/login")
   }
+
+  function handleContactUs() {
+    window.location.href = "mailto:j.marquis504@proton.me"
+  }
+
+  const setupMethodLabel =
+    allotment.setupMode === "manual"
+      ? "Manual starting allotment"
+      : allotment.setupMode === "purchases"
+        ? "Purchase-based setup"
+        : "Not started"
 
   return (
     <>
@@ -276,51 +352,198 @@ export default function ToolsPage() {
 
           {openSection === "account" && (
             <div className="rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-4">
+              {!isEditingAccount ? (
+                <div className="space-y-3">
+                  <div className="rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                      Username
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {currentUserRecord?.username || "Unknown"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                      Name
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {[currentUserRecord?.firstName, currentUserRecord?.lastName]
+                        .filter(Boolean)
+                        .join(" ") || "Not provided"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                      Email
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {currentUserRecord?.email || "Not provided"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                      Mobile
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {currentUserRecord?.mobile || "Not provided"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-wide text-emerald-300">
+                      Member Since
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {formatMemberSince(currentUserRecord?.createdAt)}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingAccount(true)}
+                      className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                    >
+                      Edit Account
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleDeleteAccount}
+                      className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/15"
+                    >
+                      Delete Account
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
+                      First Name
+                    </label>
+                    <input
+                      type="text"
+                      value={editFirstName}
+                      onChange={(e) => setEditFirstName(e.target.value)}
+                      className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
+                      Last Name
+                    </label>
+                    <input
+                      type="text"
+                      value={editLastName}
+                      onChange={(e) => setEditLastName(e.target.value)}
+                      className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
+                      Mobile
+                    </label>
+                    <input
+                      type="tel"
+                      value={editMobile}
+                      onChange={(e) => setEditMobile(e.target.value)}
+                      className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveAccount}
+                      className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                    >
+                      Save Changes
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingAccount(false)}
+                      className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <CollapseHeader
+            title="Allotment Setup"
+            isOpen={openSection === "allotment"}
+            onClick={() => toggleSection("allotment")}
+          />
+
+          {openSection === "allotment" && (
+            <div className="rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-4">
               <div className="space-y-3">
                 <div className="rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-3">
                   <p className="text-[11px] uppercase tracking-wide text-slate-400">
-                    Username
+                    Current Allotment Limit
                   </p>
                   <p className="mt-1 text-sm font-semibold text-white">
-                    {currentUserRecord?.username || "Unknown"}
+                    {allotmentLimit.toFixed(2)}g
                   </p>
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-3">
                   <p className="text-[11px] uppercase tracking-wide text-slate-400">
-                    Name
+                    Setup Method
                   </p>
                   <p className="mt-1 text-sm font-semibold text-white">
-                    {[currentUserRecord?.firstName, currentUserRecord?.lastName]
-                      .filter(Boolean)
-                      .join(" ") || "Not provided"}
+                    {setupMethodLabel}
                   </p>
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-3">
                   <p className="text-[11px] uppercase tracking-wide text-slate-400">
-                    Email
+                    Initial Setup Status
                   </p>
                   <p className="mt-1 text-sm font-semibold text-white">
-                    {currentUserRecord?.email || "Not provided"}
+                    {allotment.hasCompletedInitialSetup
+                      ? "Completed"
+                      : "Not completed"}
                   </p>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-3">
-                  <p className="text-[11px] uppercase tracking-wide text-slate-400">
-                    Mobile
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-white">
-                    {currentUserRecord?.mobile || "Not provided"}
-                  </p>
-                </div>
+                {allotment.manualStartingAllotment !== null && (
+                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-wide text-emerald-300">
+                      Manual Starting Allotment
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {allotment.manualStartingAllotment.toFixed(2)}g
+                    </p>
+                  </div>
+                )}
 
-                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-3">
-                  <p className="text-[11px] uppercase tracking-wide text-emerald-300">
-                    Member Since
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-white">
-                    {formatMemberSince(currentUserRecord?.createdAt)}
+                <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-3">
+                  <p className="text-xs leading-5 text-slate-300">
+                    If you started with a manual allotment, your dashboard and planner
+                    will use that starting amount until purchase history is added.
                   </p>
                 </div>
               </div>
@@ -555,12 +778,13 @@ export default function ToolsPage() {
               <p className="text-sm leading-6 text-slate-300">
                 Questions, feedback, or ideas?
               </p>
-              <a
-                href="mailto:j.marquis504@proton.me"
+              <button
+                type="button"
+                onClick={handleContactUs}
                 className="mt-3 inline-block rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
               >
                 Contact Us
-              </a>
+              </button>
             </div>
           )}
         </div>

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react"
 import type { ChangeEvent, FormEvent } from "react"
-import { useNavigate } from "react-router-dom"
 import Tesseract from "tesseract.js"
 import PageIntroPopup from "../components/PageIntroPopup"
 import { usePurchaseStore } from "../features/purchases/purchaseStore"
 import { useFavoritesStore } from "../features/favorites/favoritesStore"
+import { useAllotmentStore } from "../features/allotment/allotmentStore"
 
 type DraftItem = {
   id: string
@@ -199,6 +199,10 @@ function parseReceiptText(rawText: string): ParsedReceipt {
   }
 }
 
+function createLocalDate(dateString: string) {
+  return new Date(`${dateString}T00:00:00`)
+}
+
 export default function AddPurchasePage() {
   const addPurchase = usePurchaseStore((state) => state.addPurchase)
   const favoriteDispensaries = useFavoritesStore(
@@ -211,7 +215,14 @@ export default function AddPurchasePage() {
     (state) => state.loadFavoritesForCurrentUser
   )
 
-  const navigate = useNavigate()
+  const allotment = useAllotmentStore((state) => state.allotment)
+  const loadAllotmentForCurrentUser = useAllotmentStore(
+    (state) => state.loadAllotmentForCurrentUser
+  )
+  const setSetupMode = useAllotmentStore((state) => state.setSetupMode)
+  const completeInitialSetup = useAllotmentStore(
+    (state) => state.completeInitialSetup
+  )
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -230,10 +241,12 @@ export default function AddPurchasePage() {
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [isScanning, setIsScanning] = useState(false)
   const [scanStatus, setScanStatus] = useState("")
+  const [saveMessage, setSaveMessage] = useState("")
 
   useEffect(() => {
     loadFavoritesForCurrentUser()
-  }, [loadFavoritesForCurrentUser])
+    loadAllotmentForCurrentUser()
+  }, [loadFavoritesForCurrentUser, loadAllotmentForCurrentUser])
 
   useEffect(() => {
     return () => {
@@ -268,12 +281,23 @@ export default function AddPurchasePage() {
     )}px`
   }, [notes])
 
+  useEffect(() => {
+    if (!saveMessage) return
+
+    const timeout = window.setTimeout(() => {
+      setSaveMessage("")
+    }, 2500)
+
+    return () => window.clearTimeout(timeout)
+  }, [saveMessage])
+
   async function startCamera() {
     try {
       stopCamera()
       setCameraError("")
       setReceiptImage(null)
       setScanStatus("")
+      setSaveMessage("")
 
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -334,6 +358,7 @@ export default function AddPurchasePage() {
     setReceiptImage(imageDataUrl)
     setCameraError("")
     setScanStatus("Receipt image ready to scan.")
+    setSaveMessage("")
     stopCamera()
   }
 
@@ -347,6 +372,7 @@ export default function AddPurchasePage() {
       setReceiptImage(reader.result as string)
       setCameraError("")
       setScanStatus("Receipt image ready to scan.")
+      setSaveMessage("")
       stopCamera()
     }
 
@@ -425,7 +451,7 @@ export default function AddPurchasePage() {
 
       setNotes((currentNotes) => {
         if (currentNotes.trim()) return currentNotes
-        return `Scanned from receipt image.`
+        return "Scanned from receipt image."
       })
 
       setScanStatus("Receipt scanned. Please review the details before saving.")
@@ -469,6 +495,20 @@ export default function AddPurchasePage() {
     }
   }
 
+  function resetForm() {
+    setDispensary("")
+    setSelectedFavoriteDispensary("")
+    setNotes("")
+    setPurchaseDate("")
+    const firstItem = createEmptyItem()
+    setItems([firstItem])
+    setExpandedItemId(null)
+    setReceiptImage(null)
+    setCameraError("")
+    setScanStatus("")
+    stopCamera()
+  }
+
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
 
@@ -486,12 +526,37 @@ export default function AddPurchasePage() {
       return
     }
 
+    const source = receiptImage ? "scan" : "manual"
+    const purchaseDateObject = createLocalDate(purchaseDate)
+
+    let countsTowardAllotment = true
+    let entryMode: "setup" | "manual" | "scan" | "historical" =
+      source === "scan" ? "scan" : "manual"
+
+    if (
+      allotment.setupMode === "manual" &&
+      allotment.manualSetupCompletedAt
+    ) {
+      const manualSetupDate = new Date(allotment.manualSetupCompletedAt)
+
+      if (
+        !Number.isNaN(purchaseDateObject.getTime()) &&
+        !Number.isNaN(manualSetupDate.getTime()) &&
+        purchaseDateObject < manualSetupDate
+      ) {
+        countsTowardAllotment = false
+        entryMode = "historical"
+      }
+    }
+
     addPurchase({
       id: crypto.randomUUID(),
       purchaseDate,
       dispensary,
       notes,
-      source: receiptImage ? "scan" : "manual",
+      source,
+      countsTowardAllotment,
+      entryMode,
       items: items.map((item) => ({
         id: item.id,
         productName: item.productName,
@@ -500,19 +565,11 @@ export default function AddPurchasePage() {
       })),
     })
 
-    setDispensary("")
-    setSelectedFavoriteDispensary("")
-    setNotes("")
-    setPurchaseDate("")
-    const firstItem = createEmptyItem()
-    setItems([firstItem])
-    setExpandedItemId(null)
-    setReceiptImage(null)
-    setCameraError("")
-    setScanStatus("")
-    stopCamera()
+    setSetupMode("purchases")
+    completeInitialSetup()
 
-    navigate("/purchase-history")
+    resetForm()
+    setSaveMessage("Purchase saved. You can add another one now.")
   }
 
   return (
@@ -533,6 +590,12 @@ export default function AddPurchasePage() {
             Capture a receipt or enter one purchase with multiple items.
           </p>
         </div>
+
+        {saveMessage && (
+          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+            {saveMessage}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="rounded-3xl border border-white/10 bg-slate-900/90 p-4 shadow-lg shadow-black/20">

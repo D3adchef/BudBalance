@@ -3,6 +3,7 @@ import SectionCard from "../components/SectionCard"
 import PageIntroPopup from "../components/PageIntroPopup"
 import { usePurchaseStore } from "../features/purchases/purchaseStore"
 import { useSettingsStore } from "../features/settings/settingsStore"
+import { useAllotmentStore } from "../features/allotment/allotmentStore"
 
 type BuilderItem = {
   id: string
@@ -10,7 +11,7 @@ type BuilderItem = {
   grams: string
 }
 
-type OpenSection = "status" | "usage" | "insights" | "builder"
+type OpenSection = "status" | "usage" | "insights" | "builder" | null
 
 function createEmptyBuilderItem(): BuilderItem {
   return {
@@ -71,6 +72,7 @@ export default function TimelinePage() {
   const allotmentLimit = useSettingsStore(
     (state) => state.settings.allotmentLimit
   )
+  const allotment = useAllotmentStore((state) => state.allotment)
 
   const [builderItems, setBuilderItems] = useState<BuilderItem[]>([
     createEmptyBuilderItem(),
@@ -83,8 +85,11 @@ export default function TimelinePage() {
   const analytics = useMemo(() => {
     const now = new Date()
     const safePurchases = Array.isArray(purchases) ? purchases : []
+    const purchasesThatCount = safePurchases.filter(
+      (purchase) => purchase.countsTowardAllotment
+    )
 
-    const activeEntries = safePurchases
+    const activeEntries = purchasesThatCount
       .map((purchase) => {
         const purchaseDate = purchase.purchaseDate
         const items = Array.isArray(purchase.items) ? purchase.items : []
@@ -111,16 +116,27 @@ export default function TimelinePage() {
       .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
       .filter((entry) => entry.daysUntilRollOff > 0)
 
-    const activeGrams = activeEntries.reduce(
+    const activeGramsFromPurchases = activeEntries.reduce(
       (sum, entry) => sum + Number(entry.grams || 0),
       0
     )
 
-    const remainingGrams = Math.max(0, allotmentLimit - activeGrams)
+    const isUsingManualAllotment =
+      allotment.setupMode === "manual" &&
+      allotment.manualStartingAllotment !== null &&
+      purchasesThatCount.length === 0
+
+    const activeGrams = isUsingManualAllotment
+      ? Math.max(allotmentLimit - allotment.manualStartingAllotment!, 0)
+      : activeGramsFromPurchases
+
+    const remainingGrams = isUsingManualAllotment
+      ? Math.max(0, allotment.manualStartingAllotment!)
+      : Math.max(0, allotmentLimit - activeGramsFromPurchases)
 
     const monthlyMap = new Map<string, { label: string; grams: number }>()
 
-    for (const purchase of safePurchases) {
+    for (const purchase of purchasesThatCount) {
       const purchaseDate = purchase.purchaseDate
       if (!purchaseDate) continue
 
@@ -161,7 +177,7 @@ export default function TimelinePage() {
     const cycleStart = new Date(now)
     cycleStart.setDate(now.getDate() - 30)
 
-    const cyclePurchases = safePurchases.filter((purchase) => {
+    const cyclePurchases = purchasesThatCount.filter((purchase) => {
       const purchaseDate = purchase.purchaseDate
       if (!purchaseDate) return false
 
@@ -221,8 +237,9 @@ export default function TimelinePage() {
       statusLabel,
       statusTone,
       usageDifferencePct,
+      isUsingManualAllotment,
     }
-  }, [purchases, allotmentLimit])
+  }, [purchases, allotmentLimit, allotment])
 
   const maxGrams = Math.max(
     ...analytics.monthlyData.map((month) => month.grams),
@@ -271,8 +288,8 @@ export default function TimelinePage() {
     setExpandedBuilderItemId((current) => (current === itemId ? null : itemId))
   }
 
-  function toggleSection(section: OpenSection) {
-    setOpenSection((prev) => (prev === section ? "status" : section))
+  function toggleSection(section: Exclude<OpenSection, null>) {
+    setOpenSection((prev) => (prev === section ? null : section))
   }
 
   return (
@@ -308,7 +325,7 @@ export default function TimelinePage() {
             <div
               className={`rounded-2xl border px-3 py-3 shadow-sm shadow-black/20 ${analytics.statusTone}`}
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
                 <div>
                   <p className="text-[11px] uppercase tracking-wide text-slate-200/80">
                     Current Allotment Status
@@ -317,10 +334,6 @@ export default function TimelinePage() {
                     {analytics.statusLabel}
                   </h2>
                 </div>
-
-                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold text-white">
-                  {analytics.remainingGrams.toFixed(1)}g left
-                </span>
               </div>
 
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -360,6 +373,16 @@ export default function TimelinePage() {
                   </p>
                 </div>
               </div>
+
+              {analytics.isUsingManualAllotment && (
+                <div className="mt-3 rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-3">
+                  <p className="text-xs text-slate-300">
+                    You are currently using a manually entered starting allotment.
+                    Historical purchases that do not count toward allotment can still
+                    be saved in purchase history without lowering this balance.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -374,8 +397,8 @@ export default function TimelinePage() {
               {analytics.monthlyData.length > 0 ? (
                 <div className="space-y-3">
                   <p className="text-sm text-slate-300">
-                    Your recent monthly grams pattern based on saved purchase
-                    history.
+                    Your recent monthly grams pattern based on purchases that count
+                    toward your allotment.
                   </p>
 
                   <div className="space-y-3">
@@ -416,7 +439,7 @@ export default function TimelinePage() {
                 </div>
               ) : (
                 <div className="rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-4 text-sm text-slate-400">
-                  Add more purchase history to unlock usage insights.
+                  Add more allotment-counting purchase history to unlock usage insights.
                 </div>
               )}
             </SectionCard>
