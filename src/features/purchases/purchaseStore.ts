@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import { supabase } from "../../lib/supabase"
 import { useAuthStore } from "../auth/authStore"
 
 export type PurchaseItem = {
@@ -25,32 +26,26 @@ export type Purchase = {
 
 type PurchaseStore = {
   purchases: Purchase[]
-  loadPurchasesForCurrentUser: () => void
-  addPurchase: (purchase: Purchase) => void
-  clearPurchases: () => void
+  isLoading: boolean
+  loadPurchasesForCurrentUser: () => Promise<void>
+  addPurchase: (purchase: Purchase) => Promise<void>
+  clearPurchases: () => Promise<void>
 }
 
-function getCurrentUserStorageKey(currentUser: unknown) {
-  if (!currentUser) return null
-
-  if (typeof currentUser === "string") {
-    return currentUser.toLowerCase()
-  }
-
-  if (
-    typeof currentUser === "object" &&
-    currentUser !== null &&
-    "id" in currentUser &&
-    typeof currentUser.id === "string"
-  ) {
-    return currentUser.id.toLowerCase()
-  }
-
-  return null
-}
-
-function getPurchaseStorageKey(userKey: string) {
-  return `budbalance-purchases-${userKey}`
+type PurchaseRow = {
+  id: string
+  user_id: string
+  purchase_date: string
+  purchase_time: string
+  purchase_datetime: string
+  dispensary: string | null
+  notes: string | null
+  source: string | null
+  counts_toward_allotment: boolean
+  entry_mode: string
+  items: unknown
+  created_at: string
+  updated_at: string
 }
 
 function normalizeEntryMode(raw: any): PurchaseEntryMode {
@@ -77,19 +72,12 @@ function buildPurchaseDateTime(purchaseDate: string, purchaseTime: string) {
 function normalizePurchase(raw: any): Purchase {
   const normalizedItems: PurchaseItem[] = Array.isArray(raw.items)
     ? raw.items.map((item: any) => ({
-        id: item.id ?? crypto.randomUUID(),
-        productName: item.productName ?? "",
-        category: item.category ?? "",
-        grams: Number(item.grams ?? 0),
+        id: item?.id ?? crypto.randomUUID(),
+        productName: String(item?.productName ?? "").trim(),
+        category: String(item?.category ?? "").trim(),
+        grams: Number(item?.grams ?? 0),
       }))
-    : [
-        {
-          id: crypto.randomUUID(),
-          productName: raw.productName ?? "",
-          category: raw.category ?? "",
-          grams: Number(raw.grams ?? 0),
-        },
-      ]
+    : []
 
   const purchaseDate = String(raw.purchaseDate ?? "").trim()
   const purchaseTime = String(raw.purchaseTime ?? "").trim() || "12:00"
@@ -102,15 +90,55 @@ function normalizePurchase(raw: any): Purchase {
     purchaseDate,
     purchaseTime,
     purchaseDateTime,
-    dispensary: raw.dispensary ?? "",
-    notes: raw.notes ?? "",
-    source: raw.source ?? "manual",
+    dispensary: String(raw.dispensary ?? "").trim(),
+    notes: String(raw.notes ?? "").trim(),
+    source: String(raw.source ?? "manual").trim(),
     items: normalizedItems,
     countsTowardAllotment:
       typeof raw.countsTowardAllotment === "boolean"
         ? raw.countsTowardAllotment
         : true,
     entryMode: normalizeEntryMode(raw.entryMode ?? raw.source),
+  }
+}
+
+function mapRowToPurchase(row: PurchaseRow): Purchase {
+  const items = Array.isArray(row.items)
+    ? row.items.map((item: any) => ({
+        id: item?.id ?? crypto.randomUUID(),
+        productName: String(item?.productName ?? "").trim(),
+        category: String(item?.category ?? "").trim(),
+        grams: Number(item?.grams ?? 0),
+      }))
+    : []
+
+  return {
+    id: row.id,
+    purchaseDate: row.purchase_date,
+    purchaseTime: row.purchase_time,
+    purchaseDateTime: row.purchase_datetime,
+    dispensary: row.dispensary ?? "",
+    notes: row.notes ?? "",
+    source: row.source ?? "manual",
+    items,
+    countsTowardAllotment: row.counts_toward_allotment,
+    entryMode: normalizeEntryMode(row.entry_mode),
+  }
+}
+
+function mapPurchaseToInsertRow(userId: string, purchase: Purchase) {
+  return {
+    id: purchase.id,
+    user_id: userId,
+    purchase_date: purchase.purchaseDate,
+    purchase_time: purchase.purchaseTime,
+    purchase_datetime: purchase.purchaseDateTime,
+    dispensary: purchase.dispensary || null,
+    notes: purchase.notes || null,
+    source: purchase.source || "manual",
+    counts_toward_allotment: purchase.countsTowardAllotment,
+    entry_mode: purchase.entryMode,
+    items: purchase.items,
   }
 }
 
@@ -140,63 +168,83 @@ export function getPurchasesOldestFirst(purchases: Purchase[]) {
   })
 }
 
-function loadPurchases(userKey: string): Purchase[] {
-  const saved = localStorage.getItem(getPurchaseStorageKey(userKey))
-  const parsed = saved ? JSON.parse(saved) : []
-  const normalized = Array.isArray(parsed) ? parsed.map(normalizePurchase) : []
-  return sortPurchasesNewestFirst(normalized)
-}
-
-function savePurchases(userKey: string, purchases: Purchase[]) {
-  localStorage.setItem(
-    getPurchaseStorageKey(userKey),
-    JSON.stringify(sortPurchasesNewestFirst(purchases))
-  )
-}
-
 export const usePurchaseStore = create<PurchaseStore>((set, get) => ({
   purchases: [],
+  isLoading: false,
 
-  loadPurchasesForCurrentUser: () => {
+  loadPurchasesForCurrentUser: async () => {
     const currentUser = useAuthStore.getState().currentUser
-    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!userKey) {
-      set({ purchases: [] })
+    if (!currentUser) {
+      set({ purchases: [], isLoading: false })
       return
     }
 
-    const userPurchases = loadPurchases(userKey)
-    savePurchases(userKey, userPurchases)
-    set({ purchases: userPurchases })
+    set({ isLoading: true })
+
+    const { data, error } = await supabase
+      .from("purchases")
+      .select("*")
+      .eq("user_id", currentUser.id)
+      .order("purchase_datetime", { ascending: false })
+
+    if (error) {
+      console.error("Failed to load purchases:", error)
+      set({ purchases: [], isLoading: false })
+      return
+    }
+
+    const normalized = Array.isArray(data)
+      ? data.map((row) => mapRowToPurchase(row as PurchaseRow))
+      : []
+
+    set({
+      purchases: sortPurchasesNewestFirst(normalized),
+      isLoading: false,
+    })
   },
 
-  addPurchase: (purchase) => {
+  addPurchase: async (purchase) => {
     const currentUser = useAuthStore.getState().currentUser
-    const userKey = getCurrentUserStorageKey(currentUser)
-
-    if (!userKey) return
+    if (!currentUser) return
 
     const normalizedPurchase = normalizePurchase(purchase)
-    const updatedPurchases = sortPurchasesNewestFirst([
-      normalizedPurchase,
-      ...get().purchases,
-    ])
 
-    savePurchases(userKey, updatedPurchases)
-    set({ purchases: updatedPurchases })
+    const { error } = await supabase
+      .from("purchases")
+      .insert(mapPurchaseToInsertRow(currentUser.id, normalizedPurchase))
+
+    if (error) {
+      console.error("Failed to add purchase:", error)
+      throw new Error(error.message)
+    }
+
+    set({
+      purchases: sortPurchasesNewestFirst([
+        normalizedPurchase,
+        ...get().purchases,
+      ]),
+    })
   },
 
-  clearPurchases: () => {
+  clearPurchases: async () => {
     const currentUser = useAuthStore.getState().currentUser
-    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!userKey) {
+    if (!currentUser) {
       set({ purchases: [] })
       return
     }
 
-    savePurchases(userKey, [])
+    const { error } = await supabase
+      .from("purchases")
+      .delete()
+      .eq("user_id", currentUser.id)
+
+    if (error) {
+      console.error("Failed to clear purchases:", error)
+      throw new Error(error.message)
+    }
+
     set({ purchases: [] })
   },
 }))
