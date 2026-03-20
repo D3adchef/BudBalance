@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import { supabase } from "../../lib/supabase"
 import { useAuthStore } from "../auth/authStore"
 
 export type SetupMode = "manual" | "purchases" | null
@@ -12,11 +13,22 @@ export type UserAllotmentState = {
 
 type AllotmentStore = {
   allotment: UserAllotmentState
-  loadAllotmentForCurrentUser: () => void
-  setManualStartingAllotment: (grams: number) => void
-  setSetupMode: (mode: SetupMode) => void
-  completeInitialSetup: () => void
-  resetAllotmentSetup: () => void
+  isLoading: boolean
+  loadAllotmentForCurrentUser: () => Promise<void>
+  setManualStartingAllotment: (grams: number) => Promise<void>
+  setSetupMode: (mode: SetupMode) => Promise<void>
+  completeInitialSetup: () => Promise<void>
+  resetAllotmentSetup: () => Promise<void>
+}
+
+type AllotmentRow = {
+  user_id: string
+  manual_starting_allotment: string | number | null
+  manual_setup_completed_at: string | null
+  setup_mode: string | null
+  has_completed_initial_setup: boolean
+  created_at: string
+  updated_at: string
 }
 
 const DEFAULT_ALLOTMENT_STATE: UserAllotmentState = {
@@ -26,100 +38,66 @@ const DEFAULT_ALLOTMENT_STATE: UserAllotmentState = {
   hasCompletedInitialSetup: false,
 }
 
-function getCurrentUserStorageKey(currentUser: unknown) {
-  if (!currentUser) return null
-
-  if (typeof currentUser === "string") {
-    return currentUser.toLowerCase()
-  }
-
-  if (
-    typeof currentUser === "object" &&
-    currentUser !== null &&
-    "id" in currentUser &&
-    typeof currentUser.id === "string"
-  ) {
-    return currentUser.id.toLowerCase()
-  }
-
+function normalizeSetupMode(raw: unknown): SetupMode {
+  if (raw === "manual" || raw === "purchases") return raw
   return null
 }
 
-function getAllotmentStorageKey(userKey: string) {
-  return `budbalance-allotment-${userKey}`
-}
-
-function normalizeAllotment(raw: any): UserAllotmentState {
-  const parsedManual =
-    typeof raw?.manualStartingAllotment === "number" &&
-    raw.manualStartingAllotment >= 0
-      ? raw.manualStartingAllotment
-      : null
-
-  const parsedManualSetupCompletedAt =
-    typeof raw?.manualSetupCompletedAt === "string" &&
-    raw.manualSetupCompletedAt.trim().length > 0
-      ? raw.manualSetupCompletedAt
-      : null
-
-  const parsedMode: SetupMode =
-    raw?.setupMode === "manual" || raw?.setupMode === "purchases"
-      ? raw.setupMode
-      : null
-
-  const parsedCompleted =
-    typeof raw?.hasCompletedInitialSetup === "boolean"
-      ? raw.hasCompletedInitialSetup
-      : false
-
+function mapRowToAllotment(row: AllotmentRow): UserAllotmentState {
   return {
-    manualStartingAllotment: parsedManual,
-    manualSetupCompletedAt: parsedManualSetupCompletedAt,
-    setupMode: parsedMode,
-    hasCompletedInitialSetup: parsedCompleted,
+    manualStartingAllotment:
+      row.manual_starting_allotment === null
+        ? null
+        : Number(row.manual_starting_allotment),
+    manualSetupCompletedAt: row.manual_setup_completed_at,
+    setupMode: normalizeSetupMode(row.setup_mode),
+    hasCompletedInitialSetup: Boolean(row.has_completed_initial_setup),
   }
-}
-
-function loadAllotment(userKey: string): UserAllotmentState {
-  const saved = localStorage.getItem(getAllotmentStorageKey(userKey))
-
-  if (!saved) return DEFAULT_ALLOTMENT_STATE
-
-  try {
-    const parsed = JSON.parse(saved)
-    return normalizeAllotment(parsed)
-  } catch {
-    return DEFAULT_ALLOTMENT_STATE
-  }
-}
-
-function saveAllotment(userKey: string, allotment: UserAllotmentState) {
-  localStorage.setItem(getAllotmentStorageKey(userKey), JSON.stringify(allotment))
 }
 
 export const useAllotmentStore = create<AllotmentStore>((set, get) => ({
   allotment: DEFAULT_ALLOTMENT_STATE,
+  isLoading: false,
 
-  loadAllotmentForCurrentUser: () => {
+  loadAllotmentForCurrentUser: async () => {
     const currentUser = useAuthStore.getState().currentUser
-    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!userKey) {
-      set({ allotment: DEFAULT_ALLOTMENT_STATE })
+    if (!currentUser) {
+      set({
+        allotment: DEFAULT_ALLOTMENT_STATE,
+        isLoading: false,
+      })
       return
     }
 
-    const userAllotment = loadAllotment(userKey)
-    saveAllotment(userKey, userAllotment)
-    set({ allotment: userAllotment })
+    set({ isLoading: true })
+
+    const { data, error } = await supabase
+      .from("allotment_state")
+      .select("*")
+      .eq("user_id", currentUser.id)
+      .maybeSingle()
+
+    if (error) {
+      console.error("Failed to load allotment state:", error)
+      set({
+        allotment: DEFAULT_ALLOTMENT_STATE,
+        isLoading: false,
+      })
+      return
+    }
+
+    set({
+      allotment: data ? mapRowToAllotment(data as AllotmentRow) : DEFAULT_ALLOTMENT_STATE,
+      isLoading: false,
+    })
   },
 
-  setManualStartingAllotment: (grams) => {
+  setManualStartingAllotment: async (grams) => {
     const currentUser = useAuthStore.getState().currentUser
-    const userKey = getCurrentUserStorageKey(currentUser)
     const safeGrams = Number(grams)
 
-    if (!userKey || Number.isNaN(safeGrams) || safeGrams < 0) return
+    if (!currentUser || Number.isNaN(safeGrams) || safeGrams < 0) return
 
     const updatedAllotment: UserAllotmentState = {
       ...get().allotment,
@@ -128,50 +106,111 @@ export const useAllotmentStore = create<AllotmentStore>((set, get) => ({
       setupMode: "manual",
     }
 
-    saveAllotment(userKey, updatedAllotment)
+    const { error } = await supabase.from("allotment_state").upsert(
+      {
+        user_id: currentUser.id,
+        manual_starting_allotment: safeGrams,
+        manual_setup_completed_at: updatedAllotment.manualSetupCompletedAt,
+        setup_mode: updatedAllotment.setupMode,
+        has_completed_initial_setup: updatedAllotment.hasCompletedInitialSetup,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" }
+    )
+
+    if (error) {
+      console.error("Failed to save manual starting allotment:", error)
+      throw new Error(error.message)
+    }
+
     set({ allotment: updatedAllotment })
   },
 
-  setSetupMode: (mode) => {
+  setSetupMode: async (mode) => {
     const currentUser = useAuthStore.getState().currentUser
-    const userKey = getCurrentUserStorageKey(currentUser)
-
-    if (!userKey) return
+    if (!currentUser) return
 
     const updatedAllotment: UserAllotmentState = {
       ...get().allotment,
       setupMode: mode,
     }
 
-    saveAllotment(userKey, updatedAllotment)
+    const { error } = await supabase.from("allotment_state").upsert(
+      {
+        user_id: currentUser.id,
+        manual_starting_allotment: updatedAllotment.manualStartingAllotment,
+        manual_setup_completed_at: updatedAllotment.manualSetupCompletedAt,
+        setup_mode: updatedAllotment.setupMode,
+        has_completed_initial_setup: updatedAllotment.hasCompletedInitialSetup,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" }
+    )
+
+    if (error) {
+      console.error("Failed to set setup mode:", error)
+      throw new Error(error.message)
+    }
+
     set({ allotment: updatedAllotment })
   },
 
-  completeInitialSetup: () => {
+  completeInitialSetup: async () => {
     const currentUser = useAuthStore.getState().currentUser
-    const userKey = getCurrentUserStorageKey(currentUser)
-
-    if (!userKey) return
+    if (!currentUser) return
 
     const updatedAllotment: UserAllotmentState = {
       ...get().allotment,
       hasCompletedInitialSetup: true,
     }
 
-    saveAllotment(userKey, updatedAllotment)
+    const { error } = await supabase.from("allotment_state").upsert(
+      {
+        user_id: currentUser.id,
+        manual_starting_allotment: updatedAllotment.manualStartingAllotment,
+        manual_setup_completed_at: updatedAllotment.manualSetupCompletedAt,
+        setup_mode: updatedAllotment.setupMode,
+        has_completed_initial_setup: updatedAllotment.hasCompletedInitialSetup,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" }
+    )
+
+    if (error) {
+      console.error("Failed to complete initial setup:", error)
+      throw new Error(error.message)
+    }
+
     set({ allotment: updatedAllotment })
   },
 
-  resetAllotmentSetup: () => {
+  resetAllotmentSetup: async () => {
     const currentUser = useAuthStore.getState().currentUser
-    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!userKey) {
+    if (!currentUser) {
       set({ allotment: DEFAULT_ALLOTMENT_STATE })
       return
     }
 
-    saveAllotment(userKey, DEFAULT_ALLOTMENT_STATE)
+    const { error } = await supabase
+      .from("allotment_state")
+      .upsert(
+        {
+          user_id: currentUser.id,
+          manual_starting_allotment: null,
+          manual_setup_completed_at: null,
+          setup_mode: null,
+          has_completed_initial_setup: false,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" }
+      )
+
+    if (error) {
+      console.error("Failed to reset allotment state:", error)
+      throw new Error(error.message)
+    }
+
     set({ allotment: DEFAULT_ALLOTMENT_STATE })
   },
 }))
