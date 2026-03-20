@@ -7,8 +7,27 @@ type PageIntroPopupProps = {
   description: string
 }
 
-function getPopupStorageKey(username: string, pageKey: string) {
-  return `budbalance-page-intro-${username.toLowerCase()}-${pageKey}`
+function getCurrentUserStorageKey(currentUser: unknown) {
+  if (!currentUser) return null
+
+  if (typeof currentUser === "string") {
+    return currentUser.toLowerCase()
+  }
+
+  if (
+    typeof currentUser === "object" &&
+    currentUser !== null &&
+    "id" in currentUser &&
+    typeof currentUser.id === "string"
+  ) {
+    return currentUser.id.toLowerCase()
+  }
+
+  return null
+}
+
+function getPopupStorageKey(userKey: string, pageKey: string) {
+  return `budbalance-page-intro-${userKey}-${pageKey}`
 }
 
 export default function PageIntroPopup({
@@ -22,9 +41,11 @@ export default function PageIntroPopup({
   const [dontShowAgain, setDontShowAgain] = useState(false)
 
   useEffect(() => {
-    if (!currentUser) return
+    const userKey = getCurrentUserStorageKey(currentUser)
 
-    const saved = localStorage.getItem(getPopupStorageKey(currentUser, pageKey))
+    if (!userKey) return
+
+    const saved = localStorage.getItem(getPopupStorageKey(userKey, pageKey))
 
     if (saved === "hidden") {
       setIsOpen(false)
@@ -35,8 +56,10 @@ export default function PageIntroPopup({
   }, [currentUser, pageKey])
 
   function handleClose() {
-    if (currentUser && dontShowAgain) {
-      localStorage.setItem(getPopupStorageKey(currentUser, pageKey), "hidden")
+    const userKey = getCurrentUserStorageKey(currentUser)
+
+    if (userKey && dontShowAgain) {
+      localStorage.setItem(getPopupStorageKey(userKey, pageKey), "hidden")
     }
 
     setIsOpen(false)

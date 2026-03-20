@@ -16,8 +16,27 @@ const DEFAULT_SETTINGS: UserSettings = {
   allotmentLimit: 84.03,
 }
 
-function getSettingsStorageKey(username: string) {
-  return `budbalance-settings-${username.toLowerCase()}`
+function getCurrentUserStorageKey(currentUser: unknown) {
+  if (!currentUser) return null
+
+  if (typeof currentUser === "string") {
+    return currentUser.toLowerCase()
+  }
+
+  if (
+    typeof currentUser === "object" &&
+    currentUser !== null &&
+    "id" in currentUser &&
+    typeof currentUser.id === "string"
+  ) {
+    return currentUser.id.toLowerCase()
+  }
+
+  return null
+}
+
+function getSettingsStorageKey(userKey: string) {
+  return `budbalance-settings-${userKey}`
 }
 
 function normalizeSettings(raw: any): UserSettings {
@@ -31,8 +50,8 @@ function normalizeSettings(raw: any): UserSettings {
   }
 }
 
-function loadSettings(username: string): UserSettings {
-  const saved = localStorage.getItem(getSettingsStorageKey(username))
+function loadSettings(userKey: string): UserSettings {
+  const saved = localStorage.getItem(getSettingsStorageKey(userKey))
 
   if (!saved) return DEFAULT_SETTINGS
 
@@ -44,8 +63,8 @@ function loadSettings(username: string): UserSettings {
   }
 }
 
-function saveSettings(username: string, settings: UserSettings) {
-  localStorage.setItem(getSettingsStorageKey(username), JSON.stringify(settings))
+function saveSettings(userKey: string, settings: UserSettings) {
+  localStorage.setItem(getSettingsStorageKey(userKey), JSON.stringify(settings))
 }
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
@@ -53,41 +72,44 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
   loadSettingsForCurrentUser: () => {
     const currentUser = useAuthStore.getState().currentUser
+    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!currentUser) {
+    if (!userKey) {
       set({ settings: DEFAULT_SETTINGS })
       return
     }
 
-    const userSettings = loadSettings(currentUser)
-    saveSettings(currentUser, userSettings)
+    const userSettings = loadSettings(userKey)
+    saveSettings(userKey, userSettings)
     set({ settings: userSettings })
   },
 
   setAllotmentLimit: (grams) => {
     const currentUser = useAuthStore.getState().currentUser
+    const userKey = getCurrentUserStorageKey(currentUser)
     const safeGrams = Number(grams)
 
-    if (!currentUser || !safeGrams || safeGrams <= 0) return
+    if (!userKey || !safeGrams || safeGrams <= 0) return
 
     const updatedSettings = {
       ...get().settings,
       allotmentLimit: safeGrams,
     }
 
-    saveSettings(currentUser, updatedSettings)
+    saveSettings(userKey, updatedSettings)
     set({ settings: updatedSettings })
   },
 
   resetSettings: () => {
     const currentUser = useAuthStore.getState().currentUser
+    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!currentUser) {
+    if (!userKey) {
       set({ settings: DEFAULT_SETTINGS })
       return
     }
 
-    saveSettings(currentUser, DEFAULT_SETTINGS)
+    saveSettings(userKey, DEFAULT_SETTINGS)
     set({ settings: DEFAULT_SETTINGS })
   },
 }))

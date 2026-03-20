@@ -6,17 +6,22 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const login = useAuthStore((state) => state.login)
 
-  const [username, setUsername] = useState("")
+  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const result = login(username, password)
+    setIsSubmitting(true)
+
+    const result = await login(email, password)
+
+    setIsSubmitting(false)
 
     if (result.success) {
-      navigate("/")
+      navigate("/dashboard", { replace: true })
     } else {
       alert(result.message)
     }
@@ -44,16 +49,17 @@ export default function LoginPage() {
 
         <div>
           <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
-            Username
+            Email
           </label>
 
           <input
-            type="text"
-            placeholder="Enter username"
+            type="email"
+            placeholder="Enter email"
             className="w-full rounded-2xl border border-white/10 bg-slate-900 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="email"
           />
         </div>
 
@@ -70,6 +76,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              autoComplete="current-password"
             />
 
             <button
@@ -85,9 +92,10 @@ export default function LoginPage() {
         <div className="grid grid-cols-2 gap-3">
           <button
             type="submit"
-            className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.97]"
+            disabled={isSubmitting}
+            className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Login
+            {isSubmitting ? "Logging In..." : "Login"}
           </button>
 
           <Link

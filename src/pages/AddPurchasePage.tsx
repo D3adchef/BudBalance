@@ -16,6 +16,7 @@ type DraftItem = {
 type ParsedReceipt = {
   dispensary: string
   purchaseDate: string
+  purchaseTime: string
   items: DraftItem[]
   rawText: string
 }
@@ -58,6 +59,88 @@ function normalizeDateForInput(value: string) {
   }
 
   return ""
+}
+
+function normalizeTimeForInput(value: string) {
+  const trimmed = value.trim().toLowerCase()
+
+  const amPmMatch = trimmed.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i)
+  if (amPmMatch) {
+    let hour = Number(amPmMatch[1])
+    const minute = amPmMatch[2]
+    const meridiem = amPmMatch[3].toLowerCase()
+
+    if (meridiem === "pm" && hour !== 12) hour += 12
+    if (meridiem === "am" && hour === 12) hour = 0
+
+    return `${String(hour).padStart(2, "0")}:${minute}`
+  }
+
+  const twentyFourHourMatch = trimmed.match(/^(\d{1,2}):(\d{2})$/)
+  if (twentyFourHourMatch) {
+    const hour = Number(twentyFourHourMatch[1])
+    const minute = Number(twentyFourHourMatch[2])
+
+    if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+      return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
+    }
+  }
+
+  return ""
+}
+
+function convertTo24HourTime(
+  hour: string,
+  minute: string,
+  period: string
+) {
+  if (!hour || !minute || !period) return ""
+
+  let numericHour = Number(hour)
+
+  if (Number.isNaN(numericHour)) return ""
+
+  if (period === "AM") {
+    if (numericHour === 12) numericHour = 0
+  } else {
+    if (numericHour !== 12) numericHour += 12
+  }
+
+  return `${String(numericHour).padStart(2, "0")}:${minute}`
+}
+
+function getTimePartsFrom24Hour(value: string) {
+  if (!value) {
+    return {
+      hour: "",
+      minute: "",
+      period: "AM",
+    }
+  }
+
+  const [rawHour = "", rawMinute = "00"] = value.split(":")
+  const hourNumber = Number(rawHour)
+
+  if (Number.isNaN(hourNumber)) {
+    return {
+      hour: "",
+      minute: "",
+      period: "AM",
+    }
+  }
+
+  const period = hourNumber >= 12 ? "PM" : "AM"
+  const displayHour = hourNumber % 12 === 0 ? 12 : hourNumber % 12
+
+  return {
+    hour: String(displayHour),
+    minute: String(rawMinute).padStart(2, "0"),
+    period,
+  }
+}
+
+function buildPurchaseDateTime(purchaseDate: string, purchaseTime: string) {
+  return `${purchaseDate}T${purchaseTime}`
 }
 
 function guessCategory(productName: string) {
@@ -114,7 +197,12 @@ function parseReceiptText(rawText: string): ParsedReceipt {
   const foundDate =
     lines.find((line) => datePattern.test(line))?.match(datePattern)?.[0] || ""
 
+  const timePattern = /\b(\d{1,2}:\d{2}\s?(?:AM|PM|am|pm)|\d{1,2}:\d{2})\b/
+  const foundTime =
+    lines.find((line) => timePattern.test(line))?.match(timePattern)?.[0] || ""
+
   const normalizedDate = normalizeDateForInput(foundDate)
+  const normalizedTime = normalizeTimeForInput(foundTime)
 
   const dispensaryBlacklist = [
     "subtotal",
@@ -144,6 +232,7 @@ function parseReceiptText(rawText: string): ParsedReceipt {
 
       if (lower.length < 3) return false
       if (datePattern.test(lower)) return false
+      if (timePattern.test(lower)) return false
       if (/\d{3}[-.)\s]\d{3}[-.\s]\d{4}/.test(lower)) return false
       if (dispensaryBlacklist.some((term) => lower.includes(term))) return false
 
@@ -194,13 +283,14 @@ function parseReceiptText(rawText: string): ParsedReceipt {
   return {
     dispensary,
     purchaseDate: normalizedDate,
+    purchaseTime: normalizedTime,
     items: parsedItems.length > 0 ? parsedItems : [createEmptyItem()],
     rawText,
   }
 }
 
-function createLocalDate(dateString: string) {
-  return new Date(`${dateString}T00:00:00`)
+function createLocalDateTime(dateString: string, timeString: string) {
+  return new Date(`${dateString}T${timeString || "00:00"}:00`)
 }
 
 export default function AddPurchasePage() {
@@ -232,6 +322,9 @@ export default function AddPurchasePage() {
   const [selectedFavoriteDispensary, setSelectedFavoriteDispensary] = useState("")
   const [notes, setNotes] = useState("")
   const [purchaseDate, setPurchaseDate] = useState("")
+  const [purchaseHour, setPurchaseHour] = useState("")
+  const [purchaseMinute, setPurchaseMinute] = useState("")
+  const [purchasePeriod, setPurchasePeriod] = useState("AM")
   const [items, setItems] = useState<DraftItem[]>([createEmptyItem()])
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
 
@@ -242,6 +335,12 @@ export default function AddPurchasePage() {
   const [isScanning, setIsScanning] = useState(false)
   const [scanStatus, setScanStatus] = useState("")
   const [saveMessage, setSaveMessage] = useState("")
+
+  const purchaseTime = convertTo24HourTime(
+    purchaseHour,
+    purchaseMinute,
+    purchasePeriod
+  )
 
   useEffect(() => {
     loadFavoritesForCurrentUser()
@@ -439,6 +538,13 @@ export default function AddPurchasePage() {
         setPurchaseDate(parsed.purchaseDate)
       }
 
+      if (parsed.purchaseTime) {
+        const timeParts = getTimePartsFrom24Hour(parsed.purchaseTime)
+        setPurchaseHour(timeParts.hour)
+        setPurchaseMinute(timeParts.minute)
+        setPurchasePeriod(timeParts.period)
+      }
+
       if (
         parsed.items.length > 0 &&
         parsed.items.some(
@@ -500,6 +606,9 @@ export default function AddPurchasePage() {
     setSelectedFavoriteDispensary("")
     setNotes("")
     setPurchaseDate("")
+    setPurchaseHour("")
+    setPurchaseMinute("")
+    setPurchasePeriod("AM")
     const firstItem = createEmptyItem()
     setItems([firstItem])
     setExpandedItemId(null)
@@ -517,6 +626,11 @@ export default function AddPurchasePage() {
       return
     }
 
+    if (!purchaseTime) {
+      alert("Please complete Purchase Time.")
+      return
+    }
+
     const hasInvalidItem = items.some(
       (item) => !item.productName || !item.category || !item.grams
     )
@@ -527,7 +641,8 @@ export default function AddPurchasePage() {
     }
 
     const source = receiptImage ? "scan" : "manual"
-    const purchaseDateObject = createLocalDate(purchaseDate)
+    const purchaseDateTime = buildPurchaseDateTime(purchaseDate, purchaseTime)
+    const purchaseDateObject = createLocalDateTime(purchaseDate, purchaseTime)
 
     let countsTowardAllotment = true
     let entryMode: "setup" | "manual" | "scan" | "historical" =
@@ -552,6 +667,8 @@ export default function AddPurchasePage() {
     addPurchase({
       id: crypto.randomUUID(),
       purchaseDate,
+      purchaseTime,
+      purchaseDateTime,
       dispensary,
       notes,
       source,
@@ -722,7 +839,7 @@ export default function AddPurchasePage() {
                 </div>
 
                 <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3">
                     <div>
                       <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
                         Purchase Date
@@ -737,33 +854,79 @@ export default function AddPurchasePage() {
 
                     <div>
                       <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                        Dispensary
+                        Purchase Time
                       </label>
 
-                      {favoriteDispensaries.length > 0 && (
+                      <div className="grid grid-cols-3 gap-2">
                         <select
-                          value={selectedFavoriteDispensary}
-                          onChange={(e) =>
-                            handleFavoriteDispensaryChange(e.target.value)
-                          }
-                          className="mb-2 w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                          value={purchaseHour}
+                          onChange={(e) => setPurchaseHour(e.target.value)}
+                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
                         >
-                          <option value="">Choose favorite dispensary</option>
-                          {favoriteDispensaries.map((favorite) => (
-                            <option key={favorite} value={favorite}>
-                              {favorite}
+                          <option value="">Hour</option>
+                          {Array.from({ length: 12 }, (_, i) => (
+                            <option key={i + 1} value={String(i + 1)}>
+                              {i + 1}
                             </option>
                           ))}
                         </select>
-                      )}
 
-                      <input
-                        placeholder="Optional dispensary name"
-                        value={dispensary}
-                        onChange={(e) => setDispensary(e.target.value)}
-                        className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
-                      />
+                        <select
+                          value={purchaseMinute}
+                          onChange={(e) => setPurchaseMinute(e.target.value)}
+                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                        >
+                          <option value="">Min</option>
+                          {Array.from({ length: 60 }, (_, i) => {
+                            const value = String(i).padStart(2, "0")
+                            return (
+                              <option key={value} value={value}>
+                                {value}
+                              </option>
+                            )
+                          })}
+                        </select>
+
+                        <select
+                          value={purchasePeriod}
+                          onChange={(e) => setPurchasePeriod(e.target.value)}
+                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                        >
+                          <option value="AM">AM</option>
+                          <option value="PM">PM</option>
+                        </select>
+                      </div>
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                      Dispensary
+                    </label>
+
+                    {favoriteDispensaries.length > 0 && (
+                      <select
+                        value={selectedFavoriteDispensary}
+                        onChange={(e) =>
+                          handleFavoriteDispensaryChange(e.target.value)
+                        }
+                        className="mb-2 w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                      >
+                        <option value="">Choose favorite dispensary</option>
+                        {favoriteDispensaries.map((favorite) => (
+                          <option key={favorite} value={favorite}>
+                            {favorite}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    <input
+                      placeholder="Optional dispensary name"
+                      value={dispensary}
+                      onChange={(e) => setDispensary(e.target.value)}
+                      className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
+                    />
                   </div>
 
                   <div>

@@ -13,6 +13,8 @@ export type PurchaseEntryMode = "setup" | "manual" | "scan" | "historical"
 export type Purchase = {
   id: string
   purchaseDate: string
+  purchaseTime: string
+  purchaseDateTime: string
   dispensary: string
   notes: string
   source: string
@@ -28,8 +30,27 @@ type PurchaseStore = {
   clearPurchases: () => void
 }
 
-function getPurchaseStorageKey(username: string) {
-  return `budbalance-purchases-${username.toLowerCase()}`
+function getCurrentUserStorageKey(currentUser: unknown) {
+  if (!currentUser) return null
+
+  if (typeof currentUser === "string") {
+    return currentUser.toLowerCase()
+  }
+
+  if (
+    typeof currentUser === "object" &&
+    currentUser !== null &&
+    "id" in currentUser &&
+    typeof currentUser.id === "string"
+  ) {
+    return currentUser.id.toLowerCase()
+  }
+
+  return null
+}
+
+function getPurchaseStorageKey(userKey: string) {
+  return `budbalance-purchases-${userKey}`
 }
 
 function normalizeEntryMode(raw: any): PurchaseEntryMode {
@@ -43,6 +64,14 @@ function normalizeEntryMode(raw: any): PurchaseEntryMode {
   }
 
   return "manual"
+}
+
+function buildPurchaseDateTime(purchaseDate: string, purchaseTime: string) {
+  const safeDate = String(purchaseDate ?? "").trim()
+  const safeTime = String(purchaseTime ?? "").trim() || "12:00"
+
+  if (!safeDate) return ""
+  return `${safeDate}T${safeTime}`
 }
 
 function normalizePurchase(raw: any): Purchase {
@@ -62,9 +91,17 @@ function normalizePurchase(raw: any): Purchase {
         },
       ]
 
+  const purchaseDate = String(raw.purchaseDate ?? "").trim()
+  const purchaseTime = String(raw.purchaseTime ?? "").trim() || "12:00"
+  const purchaseDateTime =
+    String(raw.purchaseDateTime ?? "").trim() ||
+    buildPurchaseDateTime(purchaseDate, purchaseTime)
+
   return {
     id: raw.id ?? crypto.randomUUID(),
-    purchaseDate: raw.purchaseDate ?? "",
+    purchaseDate,
+    purchaseTime,
+    purchaseDateTime,
     dispensary: raw.dispensary ?? "",
     notes: raw.notes ?? "",
     source: raw.source ?? "manual",
@@ -77,16 +114,43 @@ function normalizePurchase(raw: any): Purchase {
   }
 }
 
-function loadPurchases(username: string): Purchase[] {
-  const saved = localStorage.getItem(getPurchaseStorageKey(username))
-  const parsed = saved ? JSON.parse(saved) : []
-  return Array.isArray(parsed) ? parsed.map(normalizePurchase) : []
+function sortPurchasesNewestFirst(purchases: Purchase[]) {
+  return [...purchases].sort((a, b) => {
+    const aTime = new Date(
+      a.purchaseDateTime || buildPurchaseDateTime(a.purchaseDate, a.purchaseTime)
+    ).getTime()
+    const bTime = new Date(
+      b.purchaseDateTime || buildPurchaseDateTime(b.purchaseDate, b.purchaseTime)
+    ).getTime()
+
+    return bTime - aTime
+  })
 }
 
-function savePurchases(username: string, purchases: Purchase[]) {
+export function getPurchasesOldestFirst(purchases: Purchase[]) {
+  return [...purchases].sort((a, b) => {
+    const aTime = new Date(
+      a.purchaseDateTime || buildPurchaseDateTime(a.purchaseDate, a.purchaseTime)
+    ).getTime()
+    const bTime = new Date(
+      b.purchaseDateTime || buildPurchaseDateTime(b.purchaseDate, b.purchaseTime)
+    ).getTime()
+
+    return aTime - bTime
+  })
+}
+
+function loadPurchases(userKey: string): Purchase[] {
+  const saved = localStorage.getItem(getPurchaseStorageKey(userKey))
+  const parsed = saved ? JSON.parse(saved) : []
+  const normalized = Array.isArray(parsed) ? parsed.map(normalizePurchase) : []
+  return sortPurchasesNewestFirst(normalized)
+}
+
+function savePurchases(userKey: string, purchases: Purchase[]) {
   localStorage.setItem(
-    getPurchaseStorageKey(username),
-    JSON.stringify(purchases)
+    getPurchaseStorageKey(userKey),
+    JSON.stringify(sortPurchasesNewestFirst(purchases))
   )
 }
 
@@ -95,38 +159,44 @@ export const usePurchaseStore = create<PurchaseStore>((set, get) => ({
 
   loadPurchasesForCurrentUser: () => {
     const currentUser = useAuthStore.getState().currentUser
+    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!currentUser) {
+    if (!userKey) {
       set({ purchases: [] })
       return
     }
 
-    const userPurchases = loadPurchases(currentUser)
-    savePurchases(currentUser, userPurchases)
+    const userPurchases = loadPurchases(userKey)
+    savePurchases(userKey, userPurchases)
     set({ purchases: userPurchases })
   },
 
   addPurchase: (purchase) => {
     const currentUser = useAuthStore.getState().currentUser
+    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!currentUser) return
+    if (!userKey) return
 
     const normalizedPurchase = normalizePurchase(purchase)
-    const updatedPurchases = [normalizedPurchase, ...get().purchases]
+    const updatedPurchases = sortPurchasesNewestFirst([
+      normalizedPurchase,
+      ...get().purchases,
+    ])
 
-    savePurchases(currentUser, updatedPurchases)
+    savePurchases(userKey, updatedPurchases)
     set({ purchases: updatedPurchases })
   },
 
   clearPurchases: () => {
     const currentUser = useAuthStore.getState().currentUser
+    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!currentUser) {
+    if (!userKey) {
       set({ purchases: [] })
       return
     }
 
-    savePurchases(currentUser, [])
+    savePurchases(userKey, [])
     set({ purchases: [] })
   },
 }))

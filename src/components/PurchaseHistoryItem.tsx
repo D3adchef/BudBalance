@@ -7,6 +7,7 @@ type PurchaseLineItem = {
 
 type PurchaseHistoryItemProps = {
   purchaseDate: string
+  purchaseTime?: string
   dispensary: string
   source: string
   items: PurchaseLineItem[]
@@ -61,9 +62,25 @@ function getSourceLabel(source: string) {
   }
 }
 
+function formatTimeLabel(time?: string) {
+  if (!time) return "Time not recorded"
+
+  const [hourString = "0", minuteString = "00"] = time.split(":")
+  const hour = Number(hourString)
+  const minute = Number(minuteString)
+
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return time
+
+  const displayHour = hour % 12 === 0 ? 12 : hour % 12
+  const amPm = hour < 12 ? "AM" : "PM"
+
+  return `${displayHour}:${String(minute).padStart(2, "0")} ${amPm}`
+}
+
 export default function PurchaseHistoryItem(props: PurchaseHistoryItemProps) {
   const {
     purchaseDate,
+    purchaseTime,
     dispensary,
     source,
     items,
@@ -85,6 +102,9 @@ export default function PurchaseHistoryItem(props: PurchaseHistoryItemProps) {
       >
         <div className="min-w-0">
           <p className="text-sm font-semibold text-white">{purchaseDate}</p>
+          <p className="mt-1 text-xs text-slate-400">
+            {formatTimeLabel(purchaseTime)}
+          </p>
           <p className="mt-1 truncate text-xs text-slate-400">
             {dispensaryLabel}
           </p>
@@ -105,6 +125,10 @@ export default function PurchaseHistoryItem(props: PurchaseHistoryItemProps) {
               <h3 className="text-base font-semibold text-white">
                 {dispensaryLabel}
               </h3>
+
+              <p className="mt-1 text-xs text-slate-400">
+                {purchaseDate} • {formatTimeLabel(purchaseTime)}
+              </p>
 
               <p className="mt-2 text-xs leading-5 text-slate-400">
                 {countsTowardAllotment ? "Counts Toward Allotment" : "History Only"} •{" "}

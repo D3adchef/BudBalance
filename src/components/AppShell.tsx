@@ -48,7 +48,7 @@ export default function AppShell({ children }: Props) {
             <BottomNavLink to="/" label="Home" icon="🏠" />
 
             <BottomNavLink
-              to="/timeline"
+              to="/smart-planner"
               label="Smart Planner"
               icon="🧠"
             />

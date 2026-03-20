@@ -73,7 +73,7 @@ export default function DashboardPage() {
         const ageInMs = today.getTime() - purchaseDate.getTime()
         const ageInDays = Math.floor(ageInMs / (1000 * 60 * 60 * 24))
 
-        if (ageInDays >= 0 && ageInDays < 31) {
+        if (ageInDays >= 0 && ageInDays < 30) {
           return total + getPurchaseTotalGrams(purchase.items || [])
         }
 
@@ -125,7 +125,7 @@ export default function DashboardPage() {
       })
 
       const rollOffDate = new Date(purchaseDate)
-      rollOffDate.setDate(rollOffDate.getDate() + 31)
+      rollOffDate.setDate(rollOffDate.getDate() + 30)
       const rollOffKey = formatDateKey(rollOffDate)
 
       if (!eventMap[rollOffKey]) eventMap[rollOffKey] = []
@@ -263,7 +263,7 @@ export default function DashboardPage() {
 
           <div className="mt-3">
             <div className="mb-1.5 flex items-center justify-between text-[10px] text-slate-400">
-              <span>31-day allotment usage</span>
+              <span>30-day allotment usage</span>
               <span>{Math.round(percentUsed)}%</span>
             </div>
 

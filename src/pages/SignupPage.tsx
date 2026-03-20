@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useNavigate, Link } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 import { useAuthStore } from "../features/auth/authStore"
 
 function isStrongPassword(password: string) {
@@ -31,8 +31,9 @@ export default function SignupPage() {
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!isStrongPassword(password)) {
@@ -47,7 +48,9 @@ export default function SignupPage() {
       return
     }
 
-    const result = signup({
+    setIsSubmitting(true)
+
+    const result = await signup({
       firstName,
       lastName,
       username,
@@ -59,8 +62,10 @@ export default function SignupPage() {
       password,
     })
 
+    setIsSubmitting(false)
+
     if (result.success) {
-      navigate("/first-time-allotment-setup")
+      navigate("/first-time-allotment-setup", { replace: true })
     } else {
       alert(result.message)
     }
@@ -139,6 +144,7 @@ export default function SignupPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="email"
             className="w-full rounded-2xl border border-white/10 bg-slate-900 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
           />
         </div>
@@ -219,6 +225,7 @@ export default function SignupPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              autoComplete="new-password"
               className="w-full rounded-2xl border border-white/10 bg-slate-900 px-3 py-3 pr-10 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
             />
 
@@ -249,6 +256,7 @@ export default function SignupPage() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
+              autoComplete="new-password"
               className="w-full rounded-2xl border border-white/10 bg-slate-900 px-3 py-3 pr-10 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
             />
 
@@ -269,21 +277,13 @@ export default function SignupPage() {
           improve BudBalance over time.
         </p>
 
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            type="submit"
-            className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.97]"
-          >
-            Submit
-          </button>
-
-          <Link
-            to="/login"
-            className="flex w-full items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.97]"
-          >
-            Login
-          </Link>
-        </div>
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isSubmitting ? "Creating Account..." : "Submit"}
+        </button>
       </form>
     </div>
   )

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import PageIntroPopup from "../components/PageIntroPopup"
+import { supabase } from "../lib/supabase"
 import { useAuthStore } from "../features/auth/authStore"
 import { useFavoritesStore } from "../features/favorites/favoritesStore"
 import { useSettingsStore } from "../features/settings/settingsStore"
@@ -36,6 +37,19 @@ type FavoritePurchaseInput = {
   grams: string
 }
 
+type ProfileRecord = {
+  id: string
+  email: string | null
+  first_name: string | null
+  last_name: string | null
+  username: string | null
+  birth_month: string | null
+  birth_day: string | null
+  birth_year: string | null
+  mobile: string | null
+  created_at: string | null
+}
+
 function CollapseHeader({
   title,
   isOpen,
@@ -59,7 +73,7 @@ function CollapseHeader({
   )
 }
 
-function formatMemberSince(dateString?: string) {
+function formatMemberSince(dateString?: string | null) {
   if (!dateString) return "Unknown"
 
   const date = new Date(dateString)
@@ -158,7 +172,6 @@ export default function ToolsPage() {
   const navigate = useNavigate()
 
   const logout = useAuthStore((state) => state.logout)
-  const users = useAuthStore((state) => state.users)
   const currentUser = useAuthStore((state) => state.currentUser)
   const updateCurrentUser = useAuthStore((state) => state.updateCurrentUser)
   const deleteCurrentUser = useAuthStore((state) => state.deleteCurrentUser)
@@ -197,6 +210,7 @@ export default function ToolsPage() {
     (state) => state.loadAllotmentForCurrentUser
   )
 
+  const [profile, setProfile] = useState<ProfileRecord | null>(null)
   const [openSection, setOpenSection] = useState<OpenSection>(null)
   const [openHelp, setOpenHelp] = useState<HelpKey>(null)
   const [selectedGlossaryTerm, setSelectedGlossaryTerm] =
@@ -221,29 +235,43 @@ export default function ToolsPage() {
     loadSettingsForCurrentUser()
     loadAllotmentForCurrentUser()
   }, [
+    currentUser,
     loadFavoritesForCurrentUser,
     loadSettingsForCurrentUser,
     loadAllotmentForCurrentUser,
   ])
 
-  const currentUserRecord = useMemo(() => {
-    if (!currentUser) return null
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!currentUser) {
+        setProfile(null)
+        return
+      }
 
-    return (
-      users.find(
-        (user) => user.username.toLowerCase() === currentUser.toLowerCase()
-      ) ?? null
-    )
-  }, [users, currentUser])
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", currentUser.id)
+        .maybeSingle()
+
+      if (error) {
+        console.error("Failed to load profile:", error)
+        setProfile(null)
+        return
+      }
+
+      setProfile(data ?? null)
+    }
+
+    loadProfile()
+  }, [currentUser])
 
   useEffect(() => {
-    if (!currentUserRecord) return
-
-    setEditFirstName(currentUserRecord.firstName || "")
-    setEditLastName(currentUserRecord.lastName || "")
-    setEditEmail(currentUserRecord.email || "")
-    setEditMobile(currentUserRecord.mobile || "")
-  }, [currentUserRecord])
+    setEditFirstName(profile?.first_name || "")
+    setEditLastName(profile?.last_name || "")
+    setEditEmail(profile?.email || currentUser?.email || "")
+    setEditMobile(profile?.mobile || "")
+  }, [profile, currentUser])
 
   function toggleSection(section: Exclude<OpenSection, null>) {
     setOpenSection((prev) => (prev === section ? null : section))
@@ -281,8 +309,8 @@ export default function ToolsPage() {
     })
   }
 
-  function handleSaveAccount() {
-    const result = updateCurrentUser({
+  async function handleSaveAccount() {
+    const result = await updateCurrentUser({
       firstName: editFirstName,
       lastName: editLastName,
       email: editEmail,
@@ -294,22 +322,32 @@ export default function ToolsPage() {
       return
     }
 
+    if (currentUser) {
+      const { data } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", currentUser.id)
+        .maybeSingle()
+
+      setProfile(data ?? null)
+    }
+
     setIsEditingAccount(false)
   }
 
-  function handleDeleteAccount() {
+  async function handleDeleteAccount() {
     const confirmed = window.confirm(
       "Are you sure you want to delete this account? This cannot be undone."
     )
 
     if (!confirmed) return
 
-    deleteCurrentUser()
+    await deleteCurrentUser()
     navigate("/login")
   }
 
-  function handleLogout() {
-    logout()
+  async function handleLogout() {
+    await logout()
     navigate("/login")
   }
 
@@ -359,7 +397,7 @@ export default function ToolsPage() {
                       Username
                     </p>
                     <p className="mt-1 text-sm font-semibold text-white">
-                      {currentUserRecord?.username || "Unknown"}
+                      {profile?.username || "Unknown"}
                     </p>
                   </div>
 
@@ -368,7 +406,7 @@ export default function ToolsPage() {
                       Name
                     </p>
                     <p className="mt-1 text-sm font-semibold text-white">
-                      {[currentUserRecord?.firstName, currentUserRecord?.lastName]
+                      {[profile?.first_name, profile?.last_name]
                         .filter(Boolean)
                         .join(" ") || "Not provided"}
                     </p>
@@ -379,7 +417,7 @@ export default function ToolsPage() {
                       Email
                     </p>
                     <p className="mt-1 text-sm font-semibold text-white">
-                      {currentUserRecord?.email || "Not provided"}
+                      {profile?.email || currentUser?.email || "Not provided"}
                     </p>
                   </div>
 
@@ -388,7 +426,7 @@ export default function ToolsPage() {
                       Mobile
                     </p>
                     <p className="mt-1 text-sm font-semibold text-white">
-                      {currentUserRecord?.mobile || "Not provided"}
+                      {profile?.mobile || "Not provided"}
                     </p>
                   </div>
 
@@ -397,7 +435,7 @@ export default function ToolsPage() {
                       Member Since
                     </p>
                     <p className="mt-1 text-sm font-semibold text-white">
-                      {formatMemberSince(currentUserRecord?.createdAt)}
+                      {formatMemberSince(profile?.created_at || currentUser?.created_at)}
                     </p>
                   </div>
 

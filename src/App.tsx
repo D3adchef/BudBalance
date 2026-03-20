@@ -7,6 +7,7 @@ import { useAllotmentStore } from "./features/allotment/allotmentStore"
 
 function App() {
   const currentUser = useAuthStore((state) => state.currentUser)
+  const initializeAuth = useAuthStore((state) => state.initializeAuth)
 
   const loadPurchasesForCurrentUser = usePurchaseStore(
     (state) => state.loadPurchasesForCurrentUser
@@ -19,6 +20,10 @@ function App() {
   const loadAllotmentForCurrentUser = useAllotmentStore(
     (state) => state.loadAllotmentForCurrentUser
   )
+
+  useEffect(() => {
+    initializeAuth()
+  }, [initializeAuth])
 
   useEffect(() => {
     loadPurchasesForCurrentUser()

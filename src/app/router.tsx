@@ -1,9 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 
+import SplashPage from "../pages/SplashPage"
 import LoginPage from "../pages/LoginPage"
 import SignupPage from "../pages/SignupPage"
 import DashboardPage from "../pages/DashboardPage"
-import TimelinePage from "../pages/TimelinePage"
+import SmartPlannerPage from "../pages/SmartPlannerPage"
 import AddPurchasePage from "../pages/AddPurchasePage"
 import PurchaseHistoryPage from "../pages/PurchaseHistoryPage"
 import ToolsPage from "../pages/ToolsPage"
@@ -43,7 +44,7 @@ function SetupPageGuard() {
   }
 
   if (hasCompletedInitialSetup) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/dashboard" replace />
   }
 
   return <FirstTimeAllotmentSetupPage />
@@ -53,6 +54,7 @@ export default function AppRouter() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/splash" element={<SplashPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
 
@@ -66,7 +68,7 @@ export default function AppRouter() {
         />
 
         <Route
-          path="/"
+          path="/dashboard"
           element={
             <ProtectedRoute>
               <SetupProtectedApp>
@@ -79,12 +81,12 @@ export default function AppRouter() {
         />
 
         <Route
-          path="/timeline"
+          path="/smart-planner"
           element={
             <ProtectedRoute>
               <SetupProtectedApp>
                 <AppShell>
-                  <TimelinePage />
+                  <SmartPlannerPage />
                 </AppShell>
               </SetupProtectedApp>
             </ProtectedRoute>
@@ -130,7 +132,8 @@ export default function AppRouter() {
           }
         />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/" element={<Navigate to="/splash" replace />} />
+        <Route path="*" element={<Navigate to="/splash" replace />} />
       </Routes>
     </BrowserRouter>
   )

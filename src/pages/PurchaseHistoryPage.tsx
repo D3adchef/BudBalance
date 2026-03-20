@@ -5,6 +5,23 @@ import { usePurchaseStore } from "../features/purchases/purchaseStore"
 
 type OpenSection = "saved" | "older" | "rules" | null
 
+type PurchaseLike = {
+  id: string
+  purchaseDate: string
+  purchaseTime?: string
+  purchaseDateTime?: string
+  dispensary: string
+  source: string
+  items: {
+    id: string
+    productName: string
+    category: string
+    grams: number
+  }[]
+  countsTowardAllotment: boolean
+  entryMode?: string
+}
+
 function getEntryModeLabel(entryMode?: string) {
   switch (entryMode) {
     case "setup":
@@ -19,15 +36,39 @@ function getEntryModeLabel(entryMode?: string) {
   }
 }
 
+function formatTimeLabel(time?: string) {
+  if (!time) return "Time not recorded"
+
+  const [hourString = "0", minuteString = "00"] = time.split(":")
+  const hour = Number(hourString)
+  const minute = Number(minuteString)
+
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return time
+
+  const displayHour = hour % 12 === 0 ? 12 : hour % 12
+  const amPm = hour < 12 ? "AM" : "PM"
+
+  return `${displayHour}:${String(minute).padStart(2, "0")} ${amPm}`
+}
+
+function getPurchaseSortValue(purchase: PurchaseLike) {
+  const fallbackDateTime = `${purchase.purchaseDate}T${purchase.purchaseTime || "12:00"}`
+  const resolved = purchase.purchaseDateTime || fallbackDateTime
+  const parsed = new Date(resolved).getTime()
+
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
 function formatPurchaseLabel(purchase: {
   purchaseDate: string
+  purchaseTime?: string
   dispensary: string
   entryMode?: string
 }) {
   const dispensaryLabel = purchase.dispensary?.trim() || "Unknown dispensary"
-  return `${purchase.purchaseDate} • ${dispensaryLabel} • ${getEntryModeLabel(
-    purchase.entryMode
-  )}`
+  return `${purchase.purchaseDate} • ${formatTimeLabel(
+    purchase.purchaseTime
+  )} • ${dispensaryLabel} • ${getEntryModeLabel(purchase.entryMode)}`
 }
 
 function CollapseHeader({
@@ -53,6 +94,41 @@ function CollapseHeader({
   )
 }
 
+function PurchaseMetaCard({ purchase }: { purchase: PurchaseLike }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-slate-400">
+            Purchase Date
+          </p>
+          <p className="mt-1 text-sm font-medium text-white">
+            {purchase.purchaseDate || "Not recorded"}
+          </p>
+        </div>
+
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-slate-400">
+            Purchase Time
+          </p>
+          <p className="mt-1 text-sm font-medium text-white">
+            {formatTimeLabel(purchase.purchaseTime)}
+          </p>
+        </div>
+
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-slate-400">
+            Entry Type
+          </p>
+          <p className="mt-1 text-sm font-medium text-white">
+            {getEntryModeLabel(purchase.entryMode)}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function PurchaseHistoryPage() {
   const purchases = usePurchaseStore((state) => state.purchases)
 
@@ -63,8 +139,8 @@ export default function PurchaseHistoryPage() {
   const [selectedDispensaryFilter, setSelectedDispensaryFilter] = useState("")
 
   const sortedPurchases = useMemo(() => {
-    return [...purchases].sort((a, b) =>
-      b.purchaseDate.localeCompare(a.purchaseDate)
+    return [...purchases].sort(
+      (a, b) => getPurchaseSortValue(b as PurchaseLike) - getPurchaseSortValue(a as PurchaseLike)
     )
   }, [purchases])
 
@@ -119,7 +195,7 @@ export default function PurchaseHistoryPage() {
       <PageIntroPopup
         pageKey="purchase-history"
         title="Purchase History"
-        description="Review your saved purchases and open any entry to see product details and grams used. Older purchases stay here for reference, even after they roll out of your active 31-day window."
+        description="Review your saved purchases and open any entry to see product details and grams used. Older purchases stay here for reference, even after they roll out of your active 30-day window."
       />
 
       <div className="space-y-4">
@@ -146,7 +222,7 @@ export default function PurchaseHistoryPage() {
             <p className="text-[11px] uppercase tracking-wide text-slate-400">
               Tracking Window
             </p>
-            <p className="mt-1 text-xl font-semibold text-emerald-400">31 Days</p>
+            <p className="mt-1 text-xl font-semibold text-emerald-400">30 Days</p>
           </div>
         </div>
 
@@ -256,19 +332,23 @@ export default function PurchaseHistoryPage() {
                   </div>
 
                   {selectedSavedPurchase && (
-                    <PurchaseHistoryItem
-                      key={selectedSavedPurchase.id}
-                      purchaseDate={selectedSavedPurchase.purchaseDate}
-                      dispensary={selectedSavedPurchase.dispensary}
-                      source={selectedSavedPurchase.source}
-                      items={selectedSavedPurchase.items}
-                      isOpen
-                      onToggle={() => setSelectedSavedId("")}
-                      countsTowardAllotment={
-                        selectedSavedPurchase.countsTowardAllotment
-                      }
-                      entryMode={selectedSavedPurchase.entryMode}
-                    />
+                    <>
+                      <PurchaseMetaCard purchase={selectedSavedPurchase} />
+
+                      <PurchaseHistoryItem
+                        key={selectedSavedPurchase.id}
+                        purchaseDate={selectedSavedPurchase.purchaseDate}
+                        dispensary={selectedSavedPurchase.dispensary}
+                        source={selectedSavedPurchase.source}
+                        items={selectedSavedPurchase.items}
+                        isOpen
+                        onToggle={() => setSelectedSavedId("")}
+                        countsTowardAllotment={
+                          selectedSavedPurchase.countsTowardAllotment
+                        }
+                        entryMode={selectedSavedPurchase.entryMode}
+                      />
+                    </>
                   )}
                 </div>
               ) : (
@@ -309,19 +389,23 @@ export default function PurchaseHistoryPage() {
                   </div>
 
                   {selectedOlderPurchase && (
-                    <PurchaseHistoryItem
-                      key={selectedOlderPurchase.id}
-                      purchaseDate={selectedOlderPurchase.purchaseDate}
-                      dispensary={selectedOlderPurchase.dispensary}
-                      source={selectedOlderPurchase.source}
-                      items={selectedOlderPurchase.items}
-                      isOpen
-                      onToggle={() => setSelectedOlderId("")}
-                      countsTowardAllotment={
-                        selectedOlderPurchase.countsTowardAllotment
-                      }
-                      entryMode={selectedOlderPurchase.entryMode}
-                    />
+                    <>
+                      <PurchaseMetaCard purchase={selectedOlderPurchase} />
+
+                      <PurchaseHistoryItem
+                        key={selectedOlderPurchase.id}
+                        purchaseDate={selectedOlderPurchase.purchaseDate}
+                        dispensary={selectedOlderPurchase.dispensary}
+                        source={selectedOlderPurchase.source}
+                        items={selectedOlderPurchase.items}
+                        isOpen
+                        onToggle={() => setSelectedOlderId("")}
+                        countsTowardAllotment={
+                          selectedOlderPurchase.countsTowardAllotment
+                        }
+                        entryMode={selectedOlderPurchase.entryMode}
+                      />
+                    </>
                   )}
                 </div>
               ) : (
@@ -357,7 +441,7 @@ export default function PurchaseHistoryPage() {
                 <div className="rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-3">
                   <p className="text-sm text-slate-200">
                     Purchases that count toward allotment roll out of the active
-                    window after 31 days.
+                    window after 30 days.
                   </p>
                 </div>
               </div>

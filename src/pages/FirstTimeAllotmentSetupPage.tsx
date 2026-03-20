@@ -16,9 +16,12 @@ type DraftItem = {
 type ParsedReceipt = {
   dispensary: string
   purchaseDate: string
+  purchaseTime: string
   items: DraftItem[]
   rawText: string
 }
+
+type FinalConfirmMode = "manual" | "purchases" | null
 
 function createEmptyItem(): DraftItem {
   return {
@@ -58,6 +61,88 @@ function normalizeDateForInput(value: string) {
   }
 
   return ""
+}
+
+function normalizeTimeForInput(value: string) {
+  const trimmed = value.trim().toLowerCase()
+
+  const amPmMatch = trimmed.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i)
+  if (amPmMatch) {
+    let hour = Number(amPmMatch[1])
+    const minute = amPmMatch[2]
+    const meridiem = amPmMatch[3].toLowerCase()
+
+    if (meridiem === "pm" && hour !== 12) hour += 12
+    if (meridiem === "am" && hour === 12) hour = 0
+
+    return `${String(hour).padStart(2, "0")}:${minute}`
+  }
+
+  const twentyFourHourMatch = trimmed.match(/^(\d{1,2}):(\d{2})$/)
+  if (twentyFourHourMatch) {
+    const hour = Number(twentyFourHourMatch[1])
+    const minute = Number(twentyFourHourMatch[2])
+
+    if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+      return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
+    }
+  }
+
+  return ""
+}
+
+function convertTo24HourTime(
+  hour: string,
+  minute: string,
+  period: string
+) {
+  if (!hour || !minute || !period) return ""
+
+  let numericHour = Number(hour)
+
+  if (Number.isNaN(numericHour)) return ""
+
+  if (period === "AM") {
+    if (numericHour === 12) numericHour = 0
+  } else {
+    if (numericHour !== 12) numericHour += 12
+  }
+
+  return `${String(numericHour).padStart(2, "0")}:${minute}`
+}
+
+function getTimePartsFrom24Hour(value: string) {
+  if (!value) {
+    return {
+      hour: "",
+      minute: "",
+      period: "AM",
+    }
+  }
+
+  const [rawHour = "", rawMinute = "00"] = value.split(":")
+  const hourNumber = Number(rawHour)
+
+  if (Number.isNaN(hourNumber)) {
+    return {
+      hour: "",
+      minute: "",
+      period: "AM",
+    }
+  }
+
+  const period = hourNumber >= 12 ? "PM" : "AM"
+  const displayHour = hourNumber % 12 === 0 ? 12 : hourNumber % 12
+
+  return {
+    hour: String(displayHour),
+    minute: String(rawMinute).padStart(2, "0"),
+    period,
+  }
+}
+
+function buildPurchaseDateTime(purchaseDate: string, purchaseTime: string) {
+  return `${purchaseDate}T${purchaseTime}`
 }
 
 function guessCategory(productName: string) {
@@ -114,7 +199,12 @@ function parseReceiptText(rawText: string): ParsedReceipt {
   const foundDate =
     lines.find((line) => datePattern.test(line))?.match(datePattern)?.[0] || ""
 
+  const timePattern = /\b(\d{1,2}:\d{2}\s?(?:AM|PM|am|pm)|\d{1,2}:\d{2})\b/
+  const foundTime =
+    lines.find((line) => timePattern.test(line))?.match(timePattern)?.[0] || ""
+
   const normalizedDate = normalizeDateForInput(foundDate)
+  const normalizedTime = normalizeTimeForInput(foundTime)
 
   const dispensaryBlacklist = [
     "subtotal",
@@ -144,6 +234,7 @@ function parseReceiptText(rawText: string): ParsedReceipt {
 
       if (lower.length < 3) return false
       if (datePattern.test(lower)) return false
+      if (timePattern.test(lower)) return false
       if (/\d{3}[-.)\s]\d{3}[-.\s]\d{4}/.test(lower)) return false
       if (dispensaryBlacklist.some((term) => lower.includes(term))) return false
 
@@ -194,6 +285,7 @@ function parseReceiptText(rawText: string): ParsedReceipt {
   return {
     dispensary,
     purchaseDate: normalizedDate,
+    purchaseTime: normalizedTime,
     items: parsedItems.length > 0 ? parsedItems : [createEmptyItem()],
     rawText,
   }
@@ -232,6 +324,9 @@ export default function FirstTimeAllotmentSetupPage() {
   const [selectedFavoriteDispensary, setSelectedFavoriteDispensary] = useState("")
   const [notes, setNotes] = useState("")
   const [purchaseDate, setPurchaseDate] = useState("")
+  const [purchaseHour, setPurchaseHour] = useState("")
+  const [purchaseMinute, setPurchaseMinute] = useState("")
+  const [purchasePeriod, setPurchasePeriod] = useState("AM")
   const [items, setItems] = useState<DraftItem[]>([createEmptyItem()])
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
 
@@ -245,6 +340,18 @@ export default function FirstTimeAllotmentSetupPage() {
   const [showIntroPopup, setShowIntroPopup] = useState(true)
   const [currentAllotmentInput, setCurrentAllotmentInput] = useState("")
   const [introError, setIntroError] = useState("")
+
+  const [showFinalConfirm, setShowFinalConfirm] = useState(false)
+  const [finalConfirmMode, setFinalConfirmMode] =
+    useState<FinalConfirmMode>(null)
+  const [hasAcceptedFinalConfirm, setHasAcceptedFinalConfirm] = useState(false)
+  const [savedPurchaseCount, setSavedPurchaseCount] = useState(0)
+
+  const purchaseTime = convertTo24HourTime(
+    purchaseHour,
+    purchaseMinute,
+    purchasePeriod
+  )
 
   useEffect(() => {
     loadFavoritesForCurrentUser()
@@ -429,6 +536,13 @@ export default function FirstTimeAllotmentSetupPage() {
         setPurchaseDate(parsed.purchaseDate)
       }
 
+      if (parsed.purchaseTime) {
+        const timeParts = getTimePartsFrom24Hour(parsed.purchaseTime)
+        setPurchaseHour(timeParts.hour)
+        setPurchaseMinute(timeParts.minute)
+        setPurchasePeriod(timeParts.period)
+      }
+
       if (
         parsed.items.length > 0 &&
         parsed.items.some(
@@ -490,12 +604,27 @@ export default function FirstTimeAllotmentSetupPage() {
     setSelectedFavoriteDispensary("")
     setNotes("")
     setPurchaseDate("")
+    setPurchaseHour("")
+    setPurchaseMinute("")
+    setPurchasePeriod("AM")
     setItems([createEmptyItem()])
     setExpandedItemId(null)
     setReceiptImage(null)
     setCameraError("")
     setScanStatus("")
     stopCamera()
+  }
+
+  function openFinalConfirmation(mode: FinalConfirmMode) {
+    setFinalConfirmMode(mode)
+    setHasAcceptedFinalConfirm(false)
+    setShowFinalConfirm(true)
+  }
+
+  function closeFinalConfirmation() {
+    setShowFinalConfirm(false)
+    setFinalConfirmMode(null)
+    setHasAcceptedFinalConfirm(false)
   }
 
   function handleSaveIntroAllotment() {
@@ -513,11 +642,8 @@ export default function FirstTimeAllotmentSetupPage() {
       return
     }
 
-    setManualStartingAllotment(parsedValue)
-    completeInitialSetup()
     setIntroError("")
-    setShowIntroPopup(false)
-    navigate("/")
+    openFinalConfirmation("manual")
   }
 
   function handleIntroAddPurchases() {
@@ -534,6 +660,11 @@ export default function FirstTimeAllotmentSetupPage() {
       return
     }
 
+    if (!purchaseTime) {
+      alert("Please complete Purchase Time.")
+      return
+    }
+
     const hasInvalidItem = items.some(
       (item) => !item.productName || !item.category || !item.grams
     )
@@ -546,6 +677,8 @@ export default function FirstTimeAllotmentSetupPage() {
     addPurchase({
       id: crypto.randomUUID(),
       purchaseDate,
+      purchaseTime,
+      purchaseDateTime: buildPurchaseDateTime(purchaseDate, purchaseTime),
       dispensary,
       notes,
       source: receiptImage ? "scan" : "manual",
@@ -559,14 +692,51 @@ export default function FirstTimeAllotmentSetupPage() {
       })),
     })
 
+    setSavedPurchaseCount((current) => current + 1)
     resetForm()
   }
 
   function handleFinishInitialSetup() {
-    setSetupMode("purchases")
-    completeInitialSetup()
-    navigate("/")
+    if (savedPurchaseCount < 1) {
+      alert(
+        "Please save at least one active purchase before completing setup, or return and enter your current allotment instead."
+      )
+      return
+    }
+
+    openFinalConfirmation("purchases")
   }
+
+  function handleConfirmCompleteSetup() {
+    if (finalConfirmMode === "manual") {
+      const parsedValue = Number(currentAllotmentInput.trim())
+
+      if (Number.isNaN(parsedValue) || parsedValue < 0) {
+        setIntroError("Please enter a valid allotment amount.")
+        closeFinalConfirmation()
+        return
+      }
+
+      setManualStartingAllotment(parsedValue)
+      completeInitialSetup()
+      setShowIntroPopup(false)
+      closeFinalConfirmation()
+      navigate("/dashboard")
+      return
+    }
+
+    if (finalConfirmMode === "purchases") {
+      setSetupMode("purchases")
+      completeInitialSetup()
+      closeFinalConfirmation()
+      navigate("/dashboard")
+    }
+  }
+
+  const finalConfirmMessage =
+    finalConfirmMode === "manual"
+      ? "Your starting allotment must be accurate from the beginning for BudBalance to calculate correctly. Incorrect information can cause inaccurate totals, timelines, and tracking."
+      : "Your saved purchase information must be accurate from the beginning for BudBalance to calculate correctly. Incorrect information can cause inaccurate totals, timelines, and tracking."
 
   return (
     <>
@@ -584,9 +754,8 @@ export default function FirstTimeAllotmentSetupPage() {
 
               <p className="mt-2 text-sm leading-6 text-slate-300">
                 Enter any current purchases now for the most accurate tracking.
-                If you want to skip for now you can do this on the add purchases
-                screen. If you want to skip this step for now you must enter your
-                current allotment now.
+                If you want to skip this step for now, you must enter your current
+                allotment now.
               </p>
             </div>
 
@@ -627,6 +796,58 @@ export default function FirstTimeAllotmentSetupPage() {
                 className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 active:scale-[0.97]"
               >
                 Add Purchases Instead
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFinalConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-4">
+          <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-slate-950 p-6 text-white shadow-[0_0_40px_rgba(0,0,0,0.55)]">
+            <div className="text-center">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
+                BudBalance
+              </p>
+
+              <h2 className="mt-2 text-lg font-semibold text-white">
+                Verify Your Setup
+              </h2>
+
+              <p className="mt-3 text-sm leading-6 text-slate-300">
+                {finalConfirmMessage}
+              </p>
+            </div>
+
+            <label className="mt-5 flex items-start gap-3 rounded-2xl border border-white/10 bg-slate-900/70 px-3 py-3">
+              <input
+                type="checkbox"
+                checked={hasAcceptedFinalConfirm}
+                onChange={(e) => setHasAcceptedFinalConfirm(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-800 text-emerald-500 focus:ring-emerald-500"
+              />
+              <span className="text-sm leading-5 text-slate-300">
+                I confirm that I reviewed my information and understand that
+                BudBalance depends on accurate setup data.
+              </span>
+            </label>
+
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={closeFinalConfirmation}
+                className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 active:scale-[0.97]"
+              >
+                Verify Information
+              </button>
+
+              <button
+                type="button"
+                disabled={!hasAcceptedFinalConfirm}
+                onClick={handleConfirmCompleteSetup}
+                className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Complete Setup
               </button>
             </div>
           </div>
@@ -775,7 +996,7 @@ export default function FirstTimeAllotmentSetupPage() {
                 </div>
 
                 <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3">
                     <div>
                       <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
                         Purchase Date
@@ -790,33 +1011,79 @@ export default function FirstTimeAllotmentSetupPage() {
 
                     <div>
                       <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                        Dispensary
+                        Purchase Time
                       </label>
 
-                      {favoriteDispensaries.length > 0 && (
+                      <div className="grid grid-cols-3 gap-2">
                         <select
-                          value={selectedFavoriteDispensary}
-                          onChange={(e) =>
-                            handleFavoriteDispensaryChange(e.target.value)
-                          }
-                          className="mb-2 w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                          value={purchaseHour}
+                          onChange={(e) => setPurchaseHour(e.target.value)}
+                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
                         >
-                          <option value="">Choose favorite dispensary</option>
-                          {favoriteDispensaries.map((favorite) => (
-                            <option key={favorite} value={favorite}>
-                              {favorite}
+                          <option value="">Hour</option>
+                          {Array.from({ length: 12 }, (_, i) => (
+                            <option key={i + 1} value={String(i + 1)}>
+                              {i + 1}
                             </option>
                           ))}
                         </select>
-                      )}
 
-                      <input
-                        placeholder="Optional dispensary name"
-                        value={dispensary}
-                        onChange={(e) => setDispensary(e.target.value)}
-                        className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
-                      />
+                        <select
+                          value={purchaseMinute}
+                          onChange={(e) => setPurchaseMinute(e.target.value)}
+                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                        >
+                          <option value="">Min</option>
+                          {Array.from({ length: 60 }, (_, i) => {
+                            const value = String(i).padStart(2, "0")
+                            return (
+                              <option key={value} value={value}>
+                                {value}
+                              </option>
+                            )
+                          })}
+                        </select>
+
+                        <select
+                          value={purchasePeriod}
+                          onChange={(e) => setPurchasePeriod(e.target.value)}
+                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                        >
+                          <option value="AM">AM</option>
+                          <option value="PM">PM</option>
+                        </select>
+                      </div>
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                      Dispensary
+                    </label>
+
+                    {favoriteDispensaries.length > 0 && (
+                      <select
+                        value={selectedFavoriteDispensary}
+                        onChange={(e) =>
+                          handleFavoriteDispensaryChange(e.target.value)
+                        }
+                        className="mb-2 w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                      >
+                        <option value="">Choose favorite dispensary</option>
+                        {favoriteDispensaries.map((favorite) => (
+                          <option key={favorite} value={favorite}>
+                            {favorite}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    <input
+                      placeholder="Optional dispensary name"
+                      value={dispensary}
+                      onChange={(e) => setDispensary(e.target.value)}
+                      className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
+                    />
                   </div>
 
                   <div>

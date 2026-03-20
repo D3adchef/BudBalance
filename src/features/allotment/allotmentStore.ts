@@ -26,8 +26,27 @@ const DEFAULT_ALLOTMENT_STATE: UserAllotmentState = {
   hasCompletedInitialSetup: false,
 }
 
-function getAllotmentStorageKey(username: string) {
-  return `budbalance-allotment-${username.toLowerCase()}`
+function getCurrentUserStorageKey(currentUser: unknown) {
+  if (!currentUser) return null
+
+  if (typeof currentUser === "string") {
+    return currentUser.toLowerCase()
+  }
+
+  if (
+    typeof currentUser === "object" &&
+    currentUser !== null &&
+    "id" in currentUser &&
+    typeof currentUser.id === "string"
+  ) {
+    return currentUser.id.toLowerCase()
+  }
+
+  return null
+}
+
+function getAllotmentStorageKey(userKey: string) {
+  return `budbalance-allotment-${userKey}`
 }
 
 function normalizeAllotment(raw: any): UserAllotmentState {
@@ -61,8 +80,8 @@ function normalizeAllotment(raw: any): UserAllotmentState {
   }
 }
 
-function loadAllotment(username: string): UserAllotmentState {
-  const saved = localStorage.getItem(getAllotmentStorageKey(username))
+function loadAllotment(userKey: string): UserAllotmentState {
+  const saved = localStorage.getItem(getAllotmentStorageKey(userKey))
 
   if (!saved) return DEFAULT_ALLOTMENT_STATE
 
@@ -74,8 +93,8 @@ function loadAllotment(username: string): UserAllotmentState {
   }
 }
 
-function saveAllotment(username: string, allotment: UserAllotmentState) {
-  localStorage.setItem(getAllotmentStorageKey(username), JSON.stringify(allotment))
+function saveAllotment(userKey: string, allotment: UserAllotmentState) {
+  localStorage.setItem(getAllotmentStorageKey(userKey), JSON.stringify(allotment))
 }
 
 export const useAllotmentStore = create<AllotmentStore>((set, get) => ({
@@ -83,22 +102,24 @@ export const useAllotmentStore = create<AllotmentStore>((set, get) => ({
 
   loadAllotmentForCurrentUser: () => {
     const currentUser = useAuthStore.getState().currentUser
+    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!currentUser) {
+    if (!userKey) {
       set({ allotment: DEFAULT_ALLOTMENT_STATE })
       return
     }
 
-    const userAllotment = loadAllotment(currentUser)
-    saveAllotment(currentUser, userAllotment)
+    const userAllotment = loadAllotment(userKey)
+    saveAllotment(userKey, userAllotment)
     set({ allotment: userAllotment })
   },
 
   setManualStartingAllotment: (grams) => {
     const currentUser = useAuthStore.getState().currentUser
+    const userKey = getCurrentUserStorageKey(currentUser)
     const safeGrams = Number(grams)
 
-    if (!currentUser || Number.isNaN(safeGrams) || safeGrams < 0) return
+    if (!userKey || Number.isNaN(safeGrams) || safeGrams < 0) return
 
     const updatedAllotment: UserAllotmentState = {
       ...get().allotment,
@@ -107,45 +128,50 @@ export const useAllotmentStore = create<AllotmentStore>((set, get) => ({
       setupMode: "manual",
     }
 
-    saveAllotment(currentUser, updatedAllotment)
+    saveAllotment(userKey, updatedAllotment)
     set({ allotment: updatedAllotment })
   },
 
   setSetupMode: (mode) => {
     const currentUser = useAuthStore.getState().currentUser
-    if (!currentUser) return
+    const userKey = getCurrentUserStorageKey(currentUser)
+
+    if (!userKey) return
 
     const updatedAllotment: UserAllotmentState = {
       ...get().allotment,
       setupMode: mode,
     }
 
-    saveAllotment(currentUser, updatedAllotment)
+    saveAllotment(userKey, updatedAllotment)
     set({ allotment: updatedAllotment })
   },
 
   completeInitialSetup: () => {
     const currentUser = useAuthStore.getState().currentUser
-    if (!currentUser) return
+    const userKey = getCurrentUserStorageKey(currentUser)
+
+    if (!userKey) return
 
     const updatedAllotment: UserAllotmentState = {
       ...get().allotment,
       hasCompletedInitialSetup: true,
     }
 
-    saveAllotment(currentUser, updatedAllotment)
+    saveAllotment(userKey, updatedAllotment)
     set({ allotment: updatedAllotment })
   },
 
   resetAllotmentSetup: () => {
     const currentUser = useAuthStore.getState().currentUser
+    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!currentUser) {
+    if (!userKey) {
       set({ allotment: DEFAULT_ALLOTMENT_STATE })
       return
     }
 
-    saveAllotment(currentUser, DEFAULT_ALLOTMENT_STATE)
+    saveAllotment(userKey, DEFAULT_ALLOTMENT_STATE)
     set({ allotment: DEFAULT_ALLOTMENT_STATE })
   },
 }))

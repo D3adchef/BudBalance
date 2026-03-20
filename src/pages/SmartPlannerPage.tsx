@@ -67,7 +67,7 @@ function CollapseHeader({
   )
 }
 
-export default function TimelinePage() {
+export default function SmartPlannerPage() {
   const purchases = usePurchaseStore((state) => state.purchases)
   const allotmentLimit = useSettingsStore(
     (state) => state.settings.allotmentLimit
@@ -103,7 +103,7 @@ export default function TimelinePage() {
         if (!purchaseDate || Number.isNaN(purchaseDateObj.getTime())) return null
 
         const rollOffDateObj = new Date(purchaseDateObj)
-        rollOffDateObj.setDate(rollOffDateObj.getDate() + 31)
+        rollOffDateObj.setDate(rollOffDateObj.getDate() + 30)
 
         const diffMs = rollOffDateObj.getTime() - now.getTime()
         const daysUntilRollOff = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
@@ -198,7 +198,7 @@ export default function TimelinePage() {
 
     const daysElapsed = daysBetween(cycleStart, now)
     const dailyBurnRate = gramsUsedInCycle / daysElapsed
-    const daysUntilRefill = 31 - Math.min(31, daysElapsed)
+    const daysUntilRefill = 30 - Math.min(30, daysElapsed)
     const projectedNeedBeforeRefill = dailyBurnRate * daysUntilRefill
     const projectedShortfall = projectedNeedBeforeRefill - remainingGrams
 
@@ -460,7 +460,7 @@ export default function TimelinePage() {
                     <span className="font-semibold text-white">
                       {analytics.remainingGrams.toFixed(1)}g
                     </span>{" "}
-                    remaining in your active 31-day window.
+                    remaining in your active 30-day window.
                   </p>
                 </div>
 

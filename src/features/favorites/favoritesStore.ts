@@ -29,8 +29,27 @@ const DEFAULT_FAVORITES: StoredFavorites = {
   favoritePurchases: [],
 }
 
-function getFavoritesStorageKey(username: string) {
-  return `budbalance-favorites-${username.toLowerCase()}`
+function getCurrentUserStorageKey(currentUser: unknown) {
+  if (!currentUser) return null
+
+  if (typeof currentUser === "string") {
+    return currentUser.toLowerCase()
+  }
+
+  if (
+    typeof currentUser === "object" &&
+    currentUser !== null &&
+    "id" in currentUser &&
+    typeof currentUser.id === "string"
+  ) {
+    return currentUser.id.toLowerCase()
+  }
+
+  return null
+}
+
+function getFavoritesStorageKey(userKey: string) {
+  return `budbalance-favorites-${userKey}`
 }
 
 function normalizeFavorites(raw: any): StoredFavorites {
@@ -52,14 +71,14 @@ function normalizeFavorites(raw: any): StoredFavorites {
   return {
     favoriteDispensaries,
     favoritePurchases: favoritePurchases.filter(
-  (item: FavoritePurchase) =>
-    item.name && item.category && item.grams > 0
-),
+      (item: FavoritePurchase) =>
+        item.name && item.category && item.grams > 0
+    ),
   }
 }
 
-function loadFavorites(username: string): StoredFavorites {
-  const saved = localStorage.getItem(getFavoritesStorageKey(username))
+function loadFavorites(userKey: string): StoredFavorites {
+  const saved = localStorage.getItem(getFavoritesStorageKey(userKey))
 
   if (!saved) return DEFAULT_FAVORITES
 
@@ -71,8 +90,8 @@ function loadFavorites(username: string): StoredFavorites {
   }
 }
 
-function saveFavorites(username: string, favorites: StoredFavorites) {
-  localStorage.setItem(getFavoritesStorageKey(username), JSON.stringify(favorites))
+function saveFavorites(userKey: string, favorites: StoredFavorites) {
+  localStorage.setItem(getFavoritesStorageKey(userKey), JSON.stringify(favorites))
 }
 
 export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
@@ -81,14 +100,15 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
 
   loadFavoritesForCurrentUser: () => {
     const currentUser = useAuthStore.getState().currentUser
+    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!currentUser) {
+    if (!userKey) {
       set(DEFAULT_FAVORITES)
       return
     }
 
-    const userFavorites = loadFavorites(currentUser)
-    saveFavorites(currentUser, userFavorites)
+    const userFavorites = loadFavorites(userKey)
+    saveFavorites(userKey, userFavorites)
 
     set({
       favoriteDispensaries: userFavorites.favoriteDispensaries,
@@ -98,9 +118,10 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
 
   addFavoriteDispensary: (name) => {
     const currentUser = useAuthStore.getState().currentUser
+    const userKey = getCurrentUserStorageKey(currentUser)
     const trimmed = name.trim()
 
-    if (!currentUser || !trimmed) return
+    if (!userKey || !trimmed) return
 
     const alreadyExists = get().favoriteDispensaries.some(
       (item) => item.toLowerCase() === trimmed.toLowerCase()
@@ -113,13 +134,15 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
       favoritePurchases: get().favoritePurchases,
     }
 
-    saveFavorites(currentUser, updatedFavorites)
+    saveFavorites(userKey, updatedFavorites)
     set(updatedFavorites)
   },
 
   removeFavoriteDispensary: (name) => {
     const currentUser = useAuthStore.getState().currentUser
-    if (!currentUser) return
+    const userKey = getCurrentUserStorageKey(currentUser)
+
+    if (!userKey) return
 
     const updatedFavorites: StoredFavorites = {
       favoriteDispensaries: get().favoriteDispensaries.filter(
@@ -128,13 +151,15 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
       favoritePurchases: get().favoritePurchases,
     }
 
-    saveFavorites(currentUser, updatedFavorites)
+    saveFavorites(userKey, updatedFavorites)
     set(updatedFavorites)
   },
 
   addFavoritePurchase: (purchase) => {
     const currentUser = useAuthStore.getState().currentUser
-    if (!currentUser) return
+    const userKey = getCurrentUserStorageKey(currentUser)
+
+    if (!userKey) return
 
     const name = purchase.name.trim()
     const category = purchase.category.trim()
@@ -155,32 +180,35 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
       ],
     }
 
-    saveFavorites(currentUser, updatedFavorites)
+    saveFavorites(userKey, updatedFavorites)
     set(updatedFavorites)
   },
 
   removeFavoritePurchase: (id) => {
     const currentUser = useAuthStore.getState().currentUser
-    if (!currentUser) return
+    const userKey = getCurrentUserStorageKey(currentUser)
+
+    if (!userKey) return
 
     const updatedFavorites: StoredFavorites = {
       favoriteDispensaries: get().favoriteDispensaries,
       favoritePurchases: get().favoritePurchases.filter((item) => item.id !== id),
     }
 
-    saveFavorites(currentUser, updatedFavorites)
+    saveFavorites(userKey, updatedFavorites)
     set(updatedFavorites)
   },
 
   clearFavorites: () => {
     const currentUser = useAuthStore.getState().currentUser
+    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!currentUser) {
+    if (!userKey) {
       set(DEFAULT_FAVORITES)
       return
     }
 
-    saveFavorites(currentUser, DEFAULT_FAVORITES)
+    saveFavorites(userKey, DEFAULT_FAVORITES)
     set(DEFAULT_FAVORITES)
   },
 }))
