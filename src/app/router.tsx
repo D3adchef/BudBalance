@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
+import { HashRouter, Routes, Route, Navigate } from "react-router-dom"
 
 import SplashPage from "../pages/SplashPage"
 import LoginPage from "../pages/LoginPage"
@@ -52,7 +52,7 @@ function SetupPageGuard() {
 
 export default function AppRouter() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         <Route path="/splash" element={<SplashPage />} />
         <Route path="/login" element={<LoginPage />} />
@@ -135,6 +135,6 @@ export default function AppRouter() {
         <Route path="/" element={<Navigate to="/splash" replace />} />
         <Route path="*" element={<Navigate to="/splash" replace />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   )
 }
