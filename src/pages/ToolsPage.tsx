@@ -230,10 +230,43 @@ export default function ToolsPage() {
   const [editEmail, setEditEmail] = useState("")
   const [editMobile, setEditMobile] = useState("")
 
+  const [favoritesError, setFavoritesError] = useState("")
+  const [isLoadingFavorites, setIsLoadingFavorites] = useState(false)
+  const [isSavingDispensary, setIsSavingDispensary] = useState(false)
+  const [isSavingPurchase, setIsSavingPurchase] = useState(false)
+  const [removingDispensaryName, setRemovingDispensaryName] = useState("")
+  const [removingPurchaseId, setRemovingPurchaseId] = useState("")
+
   useEffect(() => {
-    loadFavoritesForCurrentUser()
-    loadSettingsForCurrentUser()
-    loadAllotmentForCurrentUser()
+    const loadPageData = async () => {
+      if (!currentUser) return
+
+      setFavoritesError("")
+      setIsLoadingFavorites(true)
+
+      try {
+        await loadFavoritesForCurrentUser()
+      } catch (error) {
+        console.error("Failed to load favorites:", error)
+        setFavoritesError("Unable to load favorites right now.")
+      } finally {
+        setIsLoadingFavorites(false)
+      }
+
+      try {
+        await loadSettingsForCurrentUser()
+      } catch (error) {
+        console.error("Failed to load settings:", error)
+      }
+
+      try {
+        await loadAllotmentForCurrentUser()
+      } catch (error) {
+        console.error("Failed to load allotment:", error)
+      }
+    }
+
+    loadPageData()
   }, [
     currentUser,
     loadFavoritesForCurrentUser,
@@ -281,32 +314,80 @@ export default function ToolsPage() {
     setOpenHelp((prev) => (prev === section ? null : section))
   }
 
-  function handleAddDispensary() {
+  async function handleAddDispensary() {
     const trimmed = newDispensary.trim()
     if (!trimmed) return
 
-    addFavoriteDispensary(trimmed)
-    setNewDispensary("")
+    setFavoritesError("")
+    setIsSavingDispensary(true)
+
+    try {
+      await addFavoriteDispensary(trimmed)
+      setNewDispensary("")
+    } catch (error) {
+      console.error("Failed to save favorite dispensary:", error)
+      setFavoritesError("Unable to save favorite dispensary.")
+    } finally {
+      setIsSavingDispensary(false)
+    }
   }
 
-  function handleAddFavoritePurchase() {
+  async function handleRemoveDispensary(dispensary: string) {
+    setFavoritesError("")
+    setRemovingDispensaryName(dispensary)
+
+    try {
+      await removeFavoriteDispensary(dispensary)
+    } catch (error) {
+      console.error("Failed to remove favorite dispensary:", error)
+      setFavoritesError("Unable to remove favorite dispensary.")
+    } finally {
+      setRemovingDispensaryName("")
+    }
+  }
+
+  async function handleAddFavoritePurchase() {
     const trimmedName = favoritePurchaseInput.name.trim()
     const trimmedCategory = favoritePurchaseInput.category.trim()
     const grams = Number(favoritePurchaseInput.grams)
 
     if (!trimmedName || !trimmedCategory || !grams || grams <= 0) return
 
-    addFavoritePurchase({
-      name: trimmedName,
-      category: trimmedCategory,
-      grams,
-    })
+    setFavoritesError("")
+    setIsSavingPurchase(true)
 
-    setFavoritePurchaseInput({
-      name: "",
-      category: "",
-      grams: "",
-    })
+    try {
+      await addFavoritePurchase({
+        name: trimmedName,
+        category: trimmedCategory,
+        grams,
+      })
+
+      setFavoritePurchaseInput({
+        name: "",
+        category: "",
+        grams: "",
+      })
+    } catch (error) {
+      console.error("Failed to save favorite purchase:", error)
+      setFavoritesError("Unable to save favorite purchase.")
+    } finally {
+      setIsSavingPurchase(false)
+    }
+  }
+
+  async function handleRemoveFavoritePurchase(purchaseId: string) {
+    setFavoritesError("")
+    setRemovingPurchaseId(purchaseId)
+
+    try {
+      await removeFavoritePurchase(purchaseId)
+    } catch (error) {
+      console.error("Failed to remove favorite purchase:", error)
+      setFavoritesError("Unable to remove favorite purchase.")
+    } finally {
+      setRemovingPurchaseId("")
+    }
   }
 
   async function handleSaveAccount() {
@@ -380,6 +461,12 @@ export default function ToolsPage() {
             Manage your account, favorites, help guides, glossary, and support.
           </p>
         </div>
+
+        {favoritesError && (
+          <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+            {favoritesError}
+          </div>
+        )}
 
         <div className="space-y-3">
           <CollapseHeader
@@ -608,13 +695,18 @@ export default function ToolsPage() {
                   <button
                     type="button"
                     onClick={handleAddDispensary}
-                    className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                    disabled={isSavingDispensary}
+                    className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Add
+                    {isSavingDispensary ? "Saving..." : "Add"}
                   </button>
                 </div>
 
-                {favoriteDispensaries.length > 0 ? (
+                {isLoadingFavorites ? (
+                  <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/40 px-4 py-4 text-sm text-slate-400">
+                    Loading favorites...
+                  </div>
+                ) : favoriteDispensaries.length > 0 ? (
                   <div className="space-y-2">
                     {favoriteDispensaries.map((dispensary) => (
                       <div
@@ -624,10 +716,13 @@ export default function ToolsPage() {
                         <p className="text-sm text-white">{dispensary}</p>
                         <button
                           type="button"
-                          onClick={() => removeFavoriteDispensary(dispensary)}
-                          className="text-xs font-semibold text-rose-300 transition hover:text-rose-200"
+                          onClick={() => handleRemoveDispensary(dispensary)}
+                          disabled={removingDispensaryName === dispensary}
+                          className="text-xs font-semibold text-rose-300 transition hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          Remove
+                          {removingDispensaryName === dispensary
+                            ? "Removing..."
+                            : "Remove"}
                         </button>
                       </div>
                     ))}
@@ -701,12 +796,17 @@ export default function ToolsPage() {
                 <button
                   type="button"
                   onClick={handleAddFavoritePurchase}
-                  className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                  disabled={isSavingPurchase}
+                  className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Add Favorite Purchase
+                  {isSavingPurchase ? "Saving..." : "Add Favorite Purchase"}
                 </button>
 
-                {favoritePurchases.length > 0 ? (
+                {isLoadingFavorites ? (
+                  <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/40 px-4 py-4 text-sm text-slate-400">
+                    Loading favorites...
+                  </div>
+                ) : favoritePurchases.length > 0 ? (
                   <div className="space-y-2">
                     {favoritePurchases.map((purchase) => (
                       <div
@@ -724,10 +824,13 @@ export default function ToolsPage() {
 
                         <button
                           type="button"
-                          onClick={() => removeFavoritePurchase(purchase.id)}
-                          className="text-xs font-semibold text-rose-300 transition hover:text-rose-200"
+                          onClick={() => handleRemoveFavoritePurchase(purchase.id)}
+                          disabled={removingPurchaseId === purchase.id}
+                          className="text-xs font-semibold text-rose-300 transition hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          Remove
+                          {removingPurchaseId === purchase.id
+                            ? "Removing..."
+                            : "Remove"}
                         </button>
                       </div>
                     ))}

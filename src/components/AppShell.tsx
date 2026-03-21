@@ -1,8 +1,4 @@
 import type { ReactNode } from "react"
-import { useEffect } from "react"
-import { usePurchaseStore } from "../features/purchases/purchaseStore"
-import { useSettingsStore } from "../features/settings/settingsStore"
-import { useAllotmentStore } from "../features/allotment/allotmentStore"
 import BottomNavLink from "./BottomNavLink"
 
 type Props = {
@@ -10,28 +6,6 @@ type Props = {
 }
 
 export default function AppShell({ children }: Props) {
-  const loadPurchasesForCurrentUser = usePurchaseStore(
-    (state) => state.loadPurchasesForCurrentUser
-  )
-
-  const loadSettingsForCurrentUser = useSettingsStore(
-    (state) => state.loadSettingsForCurrentUser
-  )
-
-  const loadAllotmentForCurrentUser = useAllotmentStore(
-    (state) => state.loadAllotmentForCurrentUser
-  )
-
-  useEffect(() => {
-    loadPurchasesForCurrentUser()
-    loadSettingsForCurrentUser()
-    loadAllotmentForCurrentUser()
-  }, [
-    loadPurchasesForCurrentUser,
-    loadSettingsForCurrentUser,
-    loadAllotmentForCurrentUser,
-  ])
-
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="mx-auto w-full max-w-md bg-slate-950 shadow-[0_0_40px_rgba(0,0,0,0.55)] ring-1 ring-white/5">
@@ -45,7 +19,7 @@ export default function AppShell({ children }: Props) {
 
         <nav className="border-t border-white/10 bg-slate-950 px-4 py-3">
           <div className="grid grid-cols-5 place-items-center rounded-3xl border border-white/10 bg-slate-950/90 px-3 py-2 shadow-[0_-8px_30px_rgba(0,0,0,0.22)]">
-            <BottomNavLink to="/" label="Home" icon="🏠" />
+            <BottomNavLink to="/dashboard" label="Home" icon="🏠" />
 
             <BottomNavLink
               to="/smart-planner"

@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import { supabase } from "../../lib/supabase"
 import { useAuthStore } from "../auth/authStore"
 
 export type UserSettings = {
@@ -7,109 +8,145 @@ export type UserSettings = {
 
 type SettingsStore = {
   settings: UserSettings
-  loadSettingsForCurrentUser: () => void
-  setAllotmentLimit: (grams: number) => void
-  resetSettings: () => void
+  isLoading: boolean
+  loadSettingsForCurrentUser: () => Promise<void>
+  setAllotmentLimit: (grams: number) => Promise<void>
+  resetSettings: () => Promise<void>
+}
+
+type SettingsRow = {
+  user_id: string
+  allotment_limit: string | number
+  created_at: string
+  updated_at: string
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
   allotmentLimit: 84.03,
 }
 
-function getCurrentUserStorageKey(currentUser: unknown) {
-  if (!currentUser) return null
-
-  if (typeof currentUser === "string") {
-    return currentUser.toLowerCase()
-  }
-
-  if (
-    typeof currentUser === "object" &&
-    currentUser !== null &&
-    "id" in currentUser &&
-    typeof currentUser.id === "string"
-  ) {
-    return currentUser.id.toLowerCase()
-  }
-
-  return null
-}
-
-function getSettingsStorageKey(userKey: string) {
-  return `budbalance-settings-${userKey}`
-}
-
-function normalizeSettings(raw: any): UserSettings {
-  const parsedLimit =
-    typeof raw?.allotmentLimit === "number" && raw.allotmentLimit > 0
-      ? raw.allotmentLimit
-      : DEFAULT_SETTINGS.allotmentLimit
+function normalizeSettingsRow(row: SettingsRow): UserSettings {
+  const parsedLimit = Number(row.allotment_limit)
 
   return {
-    allotmentLimit: parsedLimit === 70 ? 84.03 : parsedLimit,
+    allotmentLimit:
+      Number.isFinite(parsedLimit) && parsedLimit > 0
+        ? parsedLimit === 70
+          ? 84.03
+          : parsedLimit
+        : DEFAULT_SETTINGS.allotmentLimit,
   }
 }
 
-function loadSettings(userKey: string): UserSettings {
-  const saved = localStorage.getItem(getSettingsStorageKey(userKey))
-
-  if (!saved) return DEFAULT_SETTINGS
-
-  try {
-    const parsed = JSON.parse(saved)
-    return normalizeSettings(parsed)
-  } catch {
-    return DEFAULT_SETTINGS
-  }
-}
-
-function saveSettings(userKey: string, settings: UserSettings) {
-  localStorage.setItem(getSettingsStorageKey(userKey), JSON.stringify(settings))
-}
-
-export const useSettingsStore = create<SettingsStore>((set, get) => ({
+export const useSettingsStore = create<SettingsStore>((set) => ({
   settings: DEFAULT_SETTINGS,
+  isLoading: false,
 
-  loadSettingsForCurrentUser: () => {
+  loadSettingsForCurrentUser: async () => {
     const currentUser = useAuthStore.getState().currentUser
-    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!userKey) {
-      set({ settings: DEFAULT_SETTINGS })
+    if (!currentUser) {
+      set({
+        settings: DEFAULT_SETTINGS,
+        isLoading: false,
+      })
       return
     }
 
-    const userSettings = loadSettings(userKey)
-    saveSettings(userKey, userSettings)
-    set({ settings: userSettings })
+    set({ isLoading: true })
+
+    const { data, error } = await supabase
+      .from("user_settings")
+      .select("*")
+      .eq("user_id", currentUser.id)
+      .maybeSingle()
+
+    if (error) {
+      console.error("Failed to load settings:", error)
+      set({
+        settings: DEFAULT_SETTINGS,
+        isLoading: false,
+      })
+      return
+    }
+
+    if (!data) {
+      const { error: insertError } = await supabase.from("user_settings").insert({
+        user_id: currentUser.id,
+        allotment_limit: DEFAULT_SETTINGS.allotmentLimit,
+      })
+
+      if (insertError) {
+        console.error("Failed to create default settings:", insertError)
+        set({
+          settings: DEFAULT_SETTINGS,
+          isLoading: false,
+        })
+        return
+      }
+
+      set({
+        settings: DEFAULT_SETTINGS,
+        isLoading: false,
+      })
+      return
+    }
+
+    set({
+      settings: normalizeSettingsRow(data as SettingsRow),
+      isLoading: false,
+    })
   },
 
-  setAllotmentLimit: (grams) => {
+  setAllotmentLimit: async (grams) => {
     const currentUser = useAuthStore.getState().currentUser
-    const userKey = getCurrentUserStorageKey(currentUser)
     const safeGrams = Number(grams)
 
-    if (!userKey || !safeGrams || safeGrams <= 0) return
+    if (!currentUser || !safeGrams || safeGrams <= 0) return
 
-    const updatedSettings = {
-      ...get().settings,
+    const updatedSettings: UserSettings = {
       allotmentLimit: safeGrams,
     }
 
-    saveSettings(userKey, updatedSettings)
+    const { error } = await supabase.from("user_settings").upsert(
+      {
+        user_id: currentUser.id,
+        allotment_limit: updatedSettings.allotmentLimit,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" }
+    )
+
+    if (error) {
+      console.error("Failed to save settings:", error)
+      throw new Error(error.message)
+    }
+
     set({ settings: updatedSettings })
   },
 
-  resetSettings: () => {
+  resetSettings: async () => {
     const currentUser = useAuthStore.getState().currentUser
-    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!userKey) {
+    if (!currentUser) {
       set({ settings: DEFAULT_SETTINGS })
       return
     }
 
-    saveSettings(userKey, DEFAULT_SETTINGS)
+    const { error } = await supabase.from("user_settings").upsert(
+      {
+        user_id: currentUser.id,
+        allotment_limit: DEFAULT_SETTINGS.allotmentLimit,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" }
+    )
+
+    if (error) {
+      console.error("Failed to reset settings:", error)
+      throw new Error(error.message)
+    }
+
     set({ settings: DEFAULT_SETTINGS })
   },
 }))

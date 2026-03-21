@@ -123,16 +123,14 @@ export default function SmartPlannerPage() {
 
     const isUsingManualAllotment =
       allotment.setupMode === "manual" &&
-      allotment.manualStartingAllotment !== null &&
-      purchasesThatCount.length === 0
+      allotment.manualStartingAllotment !== null
 
-    const activeGrams = isUsingManualAllotment
-      ? Math.max(allotmentLimit - allotment.manualStartingAllotment!, 0)
-      : activeGramsFromPurchases
+    const baselineAllotment = isUsingManualAllotment
+      ? allotment.manualStartingAllotment!
+      : allotmentLimit
 
-    const remainingGrams = isUsingManualAllotment
-      ? Math.max(0, allotment.manualStartingAllotment!)
-      : Math.max(0, allotmentLimit - activeGramsFromPurchases)
+    const activeGrams = activeGramsFromPurchases
+    const remainingGrams = Math.max(0, baselineAllotment - activeGramsFromPurchases)
 
     const monthlyMap = new Map<string, { label: string; grams: number }>()
 
@@ -224,7 +222,7 @@ export default function SmartPlannerPage() {
         : 0
 
     return {
-      allotmentLimit,
+      baselineAllotment,
       activeGrams,
       remainingGrams,
       monthlyData,
@@ -351,7 +349,7 @@ export default function SmartPlannerPage() {
                     Allotment Limit
                   </p>
                   <p className="mt-1 text-lg font-semibold text-white">
-                    {analytics.allotmentLimit.toFixed(2)}g
+                    {analytics.baselineAllotment.toFixed(2)}g
                   </p>
                 </div>
 

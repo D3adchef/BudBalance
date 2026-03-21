@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import { supabase } from "../../lib/supabase"
 import { useAuthStore } from "../auth/authStore"
 
 export type FavoritePurchase = {
@@ -11,117 +12,99 @@ export type FavoritePurchase = {
 type FavoritesStore = {
   favoriteDispensaries: string[]
   favoritePurchases: FavoritePurchase[]
-  loadFavoritesForCurrentUser: () => void
-  addFavoriteDispensary: (name: string) => void
-  removeFavoriteDispensary: (name: string) => void
-  addFavoritePurchase: (purchase: Omit<FavoritePurchase, "id">) => void
-  removeFavoritePurchase: (id: string) => void
-  clearFavorites: () => void
+  isLoading: boolean
+  loadFavoritesForCurrentUser: () => Promise<void>
+  addFavoriteDispensary: (name: string) => Promise<void>
+  removeFavoriteDispensary: (name: string) => Promise<void>
+  addFavoritePurchase: (purchase: Omit<FavoritePurchase, "id">) => Promise<void>
+  removeFavoritePurchase: (id: string) => Promise<void>
+  clearFavorites: () => Promise<void>
 }
 
-type StoredFavorites = {
-  favoriteDispensaries: string[]
-  favoritePurchases: FavoritePurchase[]
+type FavoriteRow = {
+  id: string
+  user_id: string
+  type: string
+  name: string
+  category: string | null
+  grams: string | number | null
+  created_at: string
 }
 
-const DEFAULT_FAVORITES: StoredFavorites = {
-  favoriteDispensaries: [],
-  favoritePurchases: [],
-}
-
-function getCurrentUserStorageKey(currentUser: unknown) {
-  if (!currentUser) return null
-
-  if (typeof currentUser === "string") {
-    return currentUser.toLowerCase()
-  }
-
-  if (
-    typeof currentUser === "object" &&
-    currentUser !== null &&
-    "id" in currentUser &&
-    typeof currentUser.id === "string"
-  ) {
-    return currentUser.id.toLowerCase()
-  }
-
-  return null
-}
-
-function getFavoritesStorageKey(userKey: string) {
-  return `budbalance-favorites-${userKey}`
-}
-
-function normalizeFavorites(raw: any): StoredFavorites {
-  const favoriteDispensaries = Array.isArray(raw?.favoriteDispensaries)
-    ? raw.favoriteDispensaries
-        .map((item: unknown) => String(item ?? "").trim())
-        .filter(Boolean)
-    : []
-
-  const favoritePurchases = Array.isArray(raw?.favoritePurchases)
-    ? raw.favoritePurchases.map((item: any) => ({
-        id: item?.id ?? crypto.randomUUID(),
-        name: String(item?.name ?? "").trim(),
-        category: String(item?.category ?? "").trim(),
-        grams: Number(item?.grams ?? 0),
-      }))
-    : []
-
+function normalizeFavoritePurchase(row: FavoriteRow): FavoritePurchase {
   return {
-    favoriteDispensaries,
-    favoritePurchases: favoritePurchases.filter(
-      (item: FavoritePurchase) =>
-        item.name && item.category && item.grams > 0
-    ),
+    id: row.id,
+    name: row.name ?? "",
+    category: row.category ?? "",
+    grams: Number(row.grams ?? 0),
   }
-}
-
-function loadFavorites(userKey: string): StoredFavorites {
-  const saved = localStorage.getItem(getFavoritesStorageKey(userKey))
-
-  if (!saved) return DEFAULT_FAVORITES
-
-  try {
-    const parsed = JSON.parse(saved)
-    return normalizeFavorites(parsed)
-  } catch {
-    return DEFAULT_FAVORITES
-  }
-}
-
-function saveFavorites(userKey: string, favorites: StoredFavorites) {
-  localStorage.setItem(getFavoritesStorageKey(userKey), JSON.stringify(favorites))
 }
 
 export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
   favoriteDispensaries: [],
   favoritePurchases: [],
+  isLoading: false,
 
-  loadFavoritesForCurrentUser: () => {
+  loadFavoritesForCurrentUser: async () => {
     const currentUser = useAuthStore.getState().currentUser
-    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!userKey) {
-      set(DEFAULT_FAVORITES)
+    if (!currentUser) {
+      set({
+        favoriteDispensaries: [],
+        favoritePurchases: [],
+        isLoading: false,
+      })
       return
     }
 
-    const userFavorites = loadFavorites(userKey)
-    saveFavorites(userKey, userFavorites)
+    set({ isLoading: true })
 
-    set({
-      favoriteDispensaries: userFavorites.favoriteDispensaries,
-      favoritePurchases: userFavorites.favoritePurchases,
-    })
+    try {
+      const { data, error } = await supabase
+        .from("user_favorites")
+        .select("*")
+        .eq("user_id", currentUser.id)
+        .order("created_at", { ascending: true })
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      const rows: FavoriteRow[] = Array.isArray(data) ? (data as FavoriteRow[]) : []
+
+      const favoriteDispensaries = rows
+        .filter((row) => row.type === "dispensary")
+        .map((row) => row.name?.trim())
+        .filter((name): name is string => Boolean(name))
+
+      const favoritePurchases = rows
+        .filter((row) => row.type === "product")
+        .map(normalizeFavoritePurchase)
+        .filter((item) => item.name && item.category && item.grams > 0)
+
+      set({
+        favoriteDispensaries,
+        favoritePurchases,
+        isLoading: false,
+      })
+    } catch (error) {
+      set({ isLoading: false })
+      console.error("Failed to load favorites:", error)
+      throw error
+    }
   },
 
-  addFavoriteDispensary: (name) => {
+  addFavoriteDispensary: async (name) => {
     const currentUser = useAuthStore.getState().currentUser
-    const userKey = getCurrentUserStorageKey(currentUser)
     const trimmed = name.trim()
 
-    if (!userKey || !trimmed) return
+    if (!currentUser) {
+      throw new Error("You must be logged in to save favorites.")
+    }
+
+    if (!trimmed) {
+      throw new Error("Dispensary name is required.")
+    }
 
     const alreadyExists = get().favoriteDispensaries.some(
       (item) => item.toLowerCase() === trimmed.toLowerCase()
@@ -129,86 +112,161 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
 
     if (alreadyExists) return
 
-    const updatedFavorites: StoredFavorites = {
-      favoriteDispensaries: [...get().favoriteDispensaries, trimmed],
-      favoritePurchases: get().favoritePurchases,
+    const { data, error } = await supabase
+      .from("user_favorites")
+      .insert({
+        user_id: currentUser.id,
+        type: "dispensary",
+        name: trimmed,
+        category: null,
+        grams: null,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Failed to add favorite dispensary:", error)
+      throw new Error(error.message)
     }
 
-    saveFavorites(userKey, updatedFavorites)
-    set(updatedFavorites)
+    const savedName =
+      typeof data?.name === "string" && data.name.trim() ? data.name.trim() : trimmed
+
+    set({
+      favoriteDispensaries: [...get().favoriteDispensaries, savedName],
+    })
   },
 
-  removeFavoriteDispensary: (name) => {
+  removeFavoriteDispensary: async (name) => {
     const currentUser = useAuthStore.getState().currentUser
-    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!userKey) return
+    if (!currentUser) {
+      throw new Error("You must be logged in to remove favorites.")
+    }
 
-    const updatedFavorites: StoredFavorites = {
+    const target = get().favoriteDispensaries.find(
+      (item) => item.toLowerCase() === name.toLowerCase()
+    )
+
+    if (!target) return
+
+    const { error } = await supabase
+      .from("user_favorites")
+      .delete()
+      .eq("user_id", currentUser.id)
+      .eq("type", "dispensary")
+      .eq("name", target)
+
+    if (error) {
+      console.error("Failed to remove favorite dispensary:", error)
+      throw new Error(error.message)
+    }
+
+    set({
       favoriteDispensaries: get().favoriteDispensaries.filter(
-        (item) => item !== name
+        (item) => item.toLowerCase() !== name.toLowerCase()
       ),
-      favoritePurchases: get().favoritePurchases,
-    }
-
-    saveFavorites(userKey, updatedFavorites)
-    set(updatedFavorites)
+    })
   },
 
-  addFavoritePurchase: (purchase) => {
+  addFavoritePurchase: async (purchase) => {
     const currentUser = useAuthStore.getState().currentUser
-    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!userKey) return
+    if (!currentUser) {
+      throw new Error("You must be logged in to save favorites.")
+    }
 
     const name = purchase.name.trim()
     const category = purchase.category.trim()
     const grams = Number(purchase.grams)
 
-    if (!name || !category || grams <= 0) return
+    if (!name) {
+      throw new Error("Favorite purchase name is required.")
+    }
 
-    const updatedFavorites: StoredFavorites = {
-      favoriteDispensaries: get().favoriteDispensaries,
+    if (!category) {
+      throw new Error("Favorite purchase category is required.")
+    }
+
+    if (!grams || grams <= 0) {
+      throw new Error("Favorite purchase grams must be greater than 0.")
+    }
+
+    const { data, error } = await supabase
+      .from("user_favorites")
+      .insert({
+        user_id: currentUser.id,
+        type: "product",
+        name,
+        category,
+        grams,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Failed to add favorite purchase:", error)
+      throw new Error(error.message)
+    }
+
+    set({
       favoritePurchases: [
         ...get().favoritePurchases,
-        {
-          id: crypto.randomUUID(),
-          name,
-          category,
-          grams,
-        },
+        normalizeFavoritePurchase(data as FavoriteRow),
       ],
-    }
-
-    saveFavorites(userKey, updatedFavorites)
-    set(updatedFavorites)
+    })
   },
 
-  removeFavoritePurchase: (id) => {
+  removeFavoritePurchase: async (id) => {
     const currentUser = useAuthStore.getState().currentUser
-    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!userKey) return
+    if (!currentUser) {
+      throw new Error("You must be logged in to remove favorites.")
+    }
 
-    const updatedFavorites: StoredFavorites = {
-      favoriteDispensaries: get().favoriteDispensaries,
+    const { error } = await supabase
+      .from("user_favorites")
+      .delete()
+      .eq("user_id", currentUser.id)
+      .eq("type", "product")
+      .eq("id", id)
+
+    if (error) {
+      console.error("Failed to remove favorite purchase:", error)
+      throw new Error(error.message)
+    }
+
+    set({
       favoritePurchases: get().favoritePurchases.filter((item) => item.id !== id),
-    }
-
-    saveFavorites(userKey, updatedFavorites)
-    set(updatedFavorites)
+    })
   },
 
-  clearFavorites: () => {
+  clearFavorites: async () => {
     const currentUser = useAuthStore.getState().currentUser
-    const userKey = getCurrentUserStorageKey(currentUser)
 
-    if (!userKey) {
-      set(DEFAULT_FAVORITES)
+    if (!currentUser) {
+      set({
+        favoriteDispensaries: [],
+        favoritePurchases: [],
+        isLoading: false,
+      })
       return
     }
 
-    saveFavorites(userKey, DEFAULT_FAVORITES)
-    set(DEFAULT_FAVORITES)
+    const { error } = await supabase
+      .from("user_favorites")
+      .delete()
+      .eq("user_id", currentUser.id)
+
+    if (error) {
+      console.error("Failed to clear favorites:", error)
+      throw new Error(error.message)
+    }
+
+    set({
+      favoriteDispensaries: [],
+      favoritePurchases: [],
+      isLoading: false,
+    })
   },
 }))

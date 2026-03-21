@@ -4,6 +4,7 @@ import { useAuthStore } from "./features/auth/authStore"
 import { usePurchaseStore } from "./features/purchases/purchaseStore"
 import { useSettingsStore } from "./features/settings/settingsStore"
 import { useAllotmentStore } from "./features/allotment/allotmentStore"
+import { useFavoritesStore } from "./features/favorites/favoritesStore"
 
 function App() {
   const currentUser = useAuthStore((state) => state.currentUser)
@@ -21,19 +22,48 @@ function App() {
     (state) => state.loadAllotmentForCurrentUser
   )
 
+  const loadFavoritesForCurrentUser = useFavoritesStore(
+    (state) => state.loadFavoritesForCurrentUser
+  )
+
   useEffect(() => {
     initializeAuth()
   }, [initializeAuth])
 
   useEffect(() => {
-    loadPurchasesForCurrentUser()
-    loadSettingsForCurrentUser()
-    loadAllotmentForCurrentUser()
+    const loadGlobalUserData = async () => {
+      try {
+        await loadPurchasesForCurrentUser()
+      } catch (error) {
+        console.error("Failed to load purchases:", error)
+      }
+
+      try {
+        await loadSettingsForCurrentUser()
+      } catch (error) {
+        console.error("Failed to load settings:", error)
+      }
+
+      try {
+        await loadAllotmentForCurrentUser()
+      } catch (error) {
+        console.error("Failed to load allotment:", error)
+      }
+
+      try {
+        await loadFavoritesForCurrentUser()
+      } catch (error) {
+        console.error("Failed to load favorites:", error)
+      }
+    }
+
+    loadGlobalUserData()
   }, [
     currentUser,
     loadPurchasesForCurrentUser,
     loadSettingsForCurrentUser,
     loadAllotmentForCurrentUser,
+    loadFavoritesForCurrentUser,
   ])
 
   return (
