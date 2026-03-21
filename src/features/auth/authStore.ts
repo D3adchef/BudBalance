@@ -36,6 +36,10 @@ type AuthStore = {
   updateCurrentUser: (
     data: UpdateCurrentUserInput
   ) => Promise<AuthResult>
+  updateCurrentUserPassword: (
+    currentPassword: string,
+    newPassword: string
+  ) => Promise<AuthResult>
   deleteCurrentUser: () => Promise<void>
 }
 
@@ -234,6 +238,70 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     return {
       success: true,
       message: "Account updated successfully.",
+    }
+  },
+
+  updateCurrentUserPassword: async (currentPassword, newPassword) => {
+    const currentUser = get().currentUser
+
+    if (!currentUser) {
+      return {
+        success: false,
+        message: "No current user found.",
+      }
+    }
+
+    const email = currentUser.email?.trim().toLowerCase()
+    const trimmedCurrentPassword = currentPassword.trim()
+    const trimmedNewPassword = newPassword.trim()
+
+    if (!email) {
+      return {
+        success: false,
+        message: "Unable to verify the current account email.",
+      }
+    }
+
+    if (!trimmedCurrentPassword || !trimmedNewPassword) {
+      return {
+        success: false,
+        message: "Please complete all password fields.",
+      }
+    }
+
+    if (trimmedNewPassword.length < 6) {
+      return {
+        success: false,
+        message: "New password must be at least 6 characters.",
+      }
+    }
+
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email,
+      password: trimmedCurrentPassword,
+    })
+
+    if (verifyError) {
+      return {
+        success: false,
+        message: "Current password is incorrect.",
+      }
+    }
+
+    const { error: updatePasswordError } = await supabase.auth.updateUser({
+      password: trimmedNewPassword,
+    })
+
+    if (updatePasswordError) {
+      return {
+        success: false,
+        message: updatePasswordError.message,
+      }
+    }
+
+    return {
+      success: true,
+      message: "Password updated successfully.",
     }
   },
 

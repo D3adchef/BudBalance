@@ -174,6 +174,9 @@ export default function ToolsPage() {
   const logout = useAuthStore((state) => state.logout)
   const currentUser = useAuthStore((state) => state.currentUser)
   const updateCurrentUser = useAuthStore((state) => state.updateCurrentUser)
+  const updateCurrentUserPassword = useAuthStore(
+    (state) => state.updateCurrentUserPassword
+  )
   const deleteCurrentUser = useAuthStore((state) => state.deleteCurrentUser)
 
   const favoriteDispensaries = useFavoritesStore(
@@ -216,10 +219,17 @@ export default function ToolsPage() {
     })
 
   const [isEditingAccount, setIsEditingAccount] = useState(false)
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
   const [editFirstName, setEditFirstName] = useState("")
   const [editLastName, setEditLastName] = useState("")
   const [editEmail, setEditEmail] = useState("")
   const [editMobile, setEditMobile] = useState("")
+
+  const [currentPasswordInput, setCurrentPasswordInput] = useState("")
+  const [newPasswordInput, setNewPasswordInput] = useState("")
+  const [confirmNewPasswordInput, setConfirmNewPasswordInput] = useState("")
+  const [passwordMessage, setPasswordMessage] = useState("")
+  const [passwordError, setPasswordError] = useState("")
 
   const [favoritesError, setFavoritesError] = useState("")
   const [isSavingDispensary, setIsSavingDispensary] = useState(false)
@@ -369,6 +379,54 @@ export default function ToolsPage() {
     setIsEditingAccount(false)
   }
 
+  async function handleUpdatePassword() {
+    setPasswordMessage("")
+    setPasswordError("")
+
+    const trimmedCurrentPassword = currentPasswordInput.trim()
+    const trimmedNewPassword = newPasswordInput.trim()
+    const trimmedConfirmPassword = confirmNewPasswordInput.trim()
+
+    if (!trimmedCurrentPassword || !trimmedNewPassword || !trimmedConfirmPassword) {
+      setPasswordError("Please complete all password fields.")
+      return
+    }
+
+    if (trimmedNewPassword.length < 6) {
+      setPasswordError("New password must be at least 6 characters.")
+      return
+    }
+
+    if (trimmedNewPassword !== trimmedConfirmPassword) {
+      setPasswordError("New passwords do not match.")
+      return
+    }
+
+    if (trimmedCurrentPassword === trimmedNewPassword) {
+      setPasswordError("New password must be different from the current password.")
+      return
+    }
+
+    setIsUpdatingPassword(true)
+
+    const result = await updateCurrentUserPassword(
+      trimmedCurrentPassword,
+      trimmedNewPassword
+    )
+
+    setIsUpdatingPassword(false)
+
+    if (!result.success) {
+      setPasswordError(result.message)
+      return
+    }
+
+    setPasswordMessage(result.message)
+    setCurrentPasswordInput("")
+    setNewPasswordInput("")
+    setConfirmNewPasswordInput("")
+  }
+
   async function handleDeleteAccount() {
     const confirmed = window.confirm(
       "Are you sure you want to delete this account? This cannot be undone."
@@ -497,6 +555,78 @@ export default function ToolsPage() {
                     >
                       Delete Account
                     </button>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-4">
+                    <div className="mb-3">
+                      <p className="text-sm font-semibold text-white">
+                        Update Password
+                      </p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        Enter your current password, then choose a new one.
+                      </p>
+                    </div>
+
+                    {passwordMessage && (
+                      <div className="mb-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                        {passwordMessage}
+                      </div>
+                    )}
+
+                    {passwordError && (
+                      <div className="mb-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                        {passwordError}
+                      </div>
+                    )}
+
+                    <div className="space-y-3">
+                      <div>
+                        <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
+                          Current Password
+                        </label>
+                        <input
+                          type="password"
+                          value={currentPasswordInput}
+                          onChange={(e) => setCurrentPasswordInput(e.target.value)}
+                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
+                          New Password
+                        </label>
+                        <input
+                          type="password"
+                          value={newPasswordInput}
+                          onChange={(e) => setNewPasswordInput(e.target.value)}
+                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
+                          Confirm New Password
+                        </label>
+                        <input
+                          type="password"
+                          value={confirmNewPasswordInput}
+                          onChange={(e) =>
+                            setConfirmNewPasswordInput(e.target.value)
+                          }
+                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleUpdatePassword}
+                        disabled={isUpdatingPassword}
+                        className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isUpdatingPassword ? "Updating..." : "Update Password"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (

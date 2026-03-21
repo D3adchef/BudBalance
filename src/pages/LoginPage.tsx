@@ -64,9 +64,18 @@ export default function LoginPage() {
         </div>
 
         <div>
-          <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
-            Password
-          </label>
+          <div className="mb-1.5 flex items-center justify-between">
+            <label className="block text-[11px] uppercase tracking-wide text-slate-400">
+              Password
+            </label>
+
+            <Link
+              to="/forgot-password"
+              className="text-[11px] font-medium text-emerald-400 transition hover:text-emerald-300"
+            >
+              Forgot Password?
+            </Link>
+          </div>
 
           <div className="relative">
             <input
@@ -83,6 +92,7 @@ export default function LoginPage() {
               type="button"
               onClick={() => setShowPassword(!showPassword)}
               className="absolute right-3 top-3 text-sm opacity-70 transition hover:opacity-100"
+              aria-label={showPassword ? "Hide password" : "Show password"}
             >
               {showPassword ? "🙈" : "👁️"}
             </button>

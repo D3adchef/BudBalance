@@ -3,6 +3,8 @@ import { HashRouter, Routes, Route, Navigate } from "react-router-dom"
 import SplashPage from "../pages/SplashPage"
 import LoginPage from "../pages/LoginPage"
 import SignupPage from "../pages/SignupPage"
+import ForgotPasswordPage from "../pages/ForgotPasswordPage"
+import ResetPasswordPage from "../pages/ResetPasswordPage"
 import DashboardPage from "../pages/DashboardPage"
 import SmartPlannerPage from "../pages/SmartPlannerPage"
 import AddPurchasePage from "../pages/AddPurchasePage"
@@ -57,6 +59,8 @@ export default function AppRouter() {
         <Route path="/splash" element={<SplashPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         <Route
           path="/first-time-allotment-setup"

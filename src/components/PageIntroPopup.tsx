@@ -24,6 +24,7 @@ export default function PageIntroPopup({
     const loadPopupPreference = async () => {
       if (!currentUser) {
         setIsOpen(false)
+        setDontShowAgain(false)
         setIsLoading(false)
         return
       }
@@ -39,17 +40,16 @@ export default function PageIntroPopup({
 
       if (error) {
         console.error("Failed to load popup preference:", error)
+        setDontShowAgain(false)
         setIsOpen(true)
         setIsLoading(false)
         return
       }
 
-      if (data?.dont_show_again) {
-        setIsOpen(false)
-      } else {
-        setIsOpen(true)
-      }
+      const savedPreference = Boolean(data?.dont_show_again)
 
+      setDontShowAgain(savedPreference)
+      setIsOpen(!savedPreference)
       setIsLoading(false)
     }
 
@@ -62,30 +62,27 @@ export default function PageIntroPopup({
       return
     }
 
-    if (dontShowAgain) {
-      setIsSaving(true)
+    setIsSaving(true)
 
-      const { error } = await supabase
-        .from("user_page_intro_preferences")
-        .upsert(
-          {
-            user_id: currentUser.id,
-            page_key: pageKey,
-            dont_show_again: true,
-            updated_at: new Date().toISOString(),
-          },
-          {
-            onConflict: "user_id,page_key",
-          }
-        )
+    const { error } = await supabase
+      .from("user_page_intro_preferences")
+      .upsert(
+        {
+          user_id: currentUser.id,
+          page_key: pageKey,
+          dont_show_again: dontShowAgain,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: "user_id,page_key",
+        }
+      )
 
-      if (error) {
-        console.error("Failed to save popup preference:", error)
-      }
-
-      setIsSaving(false)
+    if (error) {
+      console.error("Failed to save popup preference:", error)
     }
 
+    setIsSaving(false)
     setIsOpen(false)
   }
 
