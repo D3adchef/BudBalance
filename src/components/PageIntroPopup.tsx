@@ -1,33 +1,11 @@
 import { useEffect, useState } from "react"
 import { useAuthStore } from "../features/auth/authStore"
+import { supabase } from "../lib/supabase"
 
 type PageIntroPopupProps = {
   pageKey: string
   title: string
   description: string
-}
-
-function getCurrentUserStorageKey(currentUser: unknown) {
-  if (!currentUser) return null
-
-  if (typeof currentUser === "string") {
-    return currentUser.toLowerCase()
-  }
-
-  if (
-    typeof currentUser === "object" &&
-    currentUser !== null &&
-    "id" in currentUser &&
-    typeof currentUser.id === "string"
-  ) {
-    return currentUser.id.toLowerCase()
-  }
-
-  return null
-}
-
-function getPopupStorageKey(userKey: string, pageKey: string) {
-  return `budbalance-page-intro-${userKey}-${pageKey}`
 }
 
 export default function PageIntroPopup({
@@ -39,33 +17,79 @@ export default function PageIntroPopup({
 
   const [isOpen, setIsOpen] = useState(false)
   const [dontShowAgain, setDontShowAgain] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
-    const userKey = getCurrentUserStorageKey(currentUser)
+    const loadPopupPreference = async () => {
+      if (!currentUser) {
+        setIsOpen(false)
+        setIsLoading(false)
+        return
+      }
 
-    if (!userKey) return
+      setIsLoading(true)
 
-    const saved = localStorage.getItem(getPopupStorageKey(userKey, pageKey))
+      const { data, error } = await supabase
+        .from("user_page_intro_preferences")
+        .select("dont_show_again")
+        .eq("user_id", currentUser.id)
+        .eq("page_key", pageKey)
+        .maybeSingle()
 
-    if (saved === "hidden") {
+      if (error) {
+        console.error("Failed to load popup preference:", error)
+        setIsOpen(true)
+        setIsLoading(false)
+        return
+      }
+
+      if (data?.dont_show_again) {
+        setIsOpen(false)
+      } else {
+        setIsOpen(true)
+      }
+
+      setIsLoading(false)
+    }
+
+    loadPopupPreference()
+  }, [currentUser, pageKey])
+
+  async function handleClose() {
+    if (!currentUser) {
       setIsOpen(false)
       return
     }
 
-    setIsOpen(true)
-  }, [currentUser, pageKey])
+    if (dontShowAgain) {
+      setIsSaving(true)
 
-  function handleClose() {
-    const userKey = getCurrentUserStorageKey(currentUser)
+      const { error } = await supabase
+        .from("user_page_intro_preferences")
+        .upsert(
+          {
+            user_id: currentUser.id,
+            page_key: pageKey,
+            dont_show_again: true,
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: "user_id,page_key",
+          }
+        )
 
-    if (userKey && dontShowAgain) {
-      localStorage.setItem(getPopupStorageKey(userKey, pageKey), "hidden")
+      if (error) {
+        console.error("Failed to save popup preference:", error)
+      }
+
+      setIsSaving(false)
     }
 
     setIsOpen(false)
   }
 
-  if (!isOpen) return null
+  if (isLoading || !isOpen) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4">
@@ -73,7 +97,8 @@ export default function PageIntroPopup({
         <button
           type="button"
           onClick={handleClose}
-          className="absolute right-4 top-4 text-sm text-slate-400 transition hover:text-white"
+          disabled={isSaving}
+          className="absolute right-4 top-4 text-sm text-slate-400 transition hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
           aria-label="Close popup"
         >
           ✕
@@ -95,6 +120,7 @@ export default function PageIntroPopup({
               type="checkbox"
               checked={dontShowAgain}
               onChange={(e) => setDontShowAgain(e.target.checked)}
+              disabled={isSaving}
               className="h-4 w-4 rounded border-white/10 bg-slate-900 text-emerald-500 focus:ring-emerald-500"
             />
             Don’t show again
@@ -103,9 +129,10 @@ export default function PageIntroPopup({
           <button
             type="button"
             onClick={handleClose}
-            className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.97]"
+            disabled={isSaving}
+            className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Got it
+            {isSaving ? "Saving..." : "Got it"}
           </button>
         </div>
       </div>
