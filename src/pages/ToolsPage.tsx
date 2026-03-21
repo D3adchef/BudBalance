@@ -182,9 +182,6 @@ export default function ToolsPage() {
   const favoritePurchases = useFavoritesStore(
     (state) => state.favoritePurchases
   )
-  const loadFavoritesForCurrentUser = useFavoritesStore(
-    (state) => state.loadFavoritesForCurrentUser
-  )
   const addFavoriteDispensary = useFavoritesStore(
     (state) => state.addFavoriteDispensary
   )
@@ -201,14 +198,8 @@ export default function ToolsPage() {
   const allotmentLimit = useSettingsStore(
     (state) => state.settings.allotmentLimit
   )
-  const loadSettingsForCurrentUser = useSettingsStore(
-    (state) => state.loadSettingsForCurrentUser
-  )
 
   const allotment = useAllotmentStore((state) => state.allotment)
-  const loadAllotmentForCurrentUser = useAllotmentStore(
-    (state) => state.loadAllotmentForCurrentUser
-  )
 
   const [profile, setProfile] = useState<ProfileRecord | null>(null)
   const [openSection, setOpenSection] = useState<OpenSection>(null)
@@ -231,48 +222,10 @@ export default function ToolsPage() {
   const [editMobile, setEditMobile] = useState("")
 
   const [favoritesError, setFavoritesError] = useState("")
-  const [isLoadingFavorites, setIsLoadingFavorites] = useState(false)
   const [isSavingDispensary, setIsSavingDispensary] = useState(false)
   const [isSavingPurchase, setIsSavingPurchase] = useState(false)
   const [removingDispensaryName, setRemovingDispensaryName] = useState("")
   const [removingPurchaseId, setRemovingPurchaseId] = useState("")
-
-  useEffect(() => {
-    const loadPageData = async () => {
-      if (!currentUser) return
-
-      setFavoritesError("")
-      setIsLoadingFavorites(true)
-
-      try {
-        await loadFavoritesForCurrentUser()
-      } catch (error) {
-        console.error("Failed to load favorites:", error)
-        setFavoritesError("Unable to load favorites right now.")
-      } finally {
-        setIsLoadingFavorites(false)
-      }
-
-      try {
-        await loadSettingsForCurrentUser()
-      } catch (error) {
-        console.error("Failed to load settings:", error)
-      }
-
-      try {
-        await loadAllotmentForCurrentUser()
-      } catch (error) {
-        console.error("Failed to load allotment:", error)
-      }
-    }
-
-    loadPageData()
-  }, [
-    currentUser,
-    loadFavoritesForCurrentUser,
-    loadSettingsForCurrentUser,
-    loadAllotmentForCurrentUser,
-  ])
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -522,7 +475,9 @@ export default function ToolsPage() {
                       Member Since
                     </p>
                     <p className="mt-1 text-sm font-semibold text-white">
-                      {formatMemberSince(profile?.created_at || currentUser?.created_at)}
+                      {formatMemberSince(
+                        profile?.created_at || currentUser?.created_at
+                      )}
                     </p>
                   </div>
 
@@ -667,8 +622,9 @@ export default function ToolsPage() {
 
                 <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-3">
                   <p className="text-xs leading-5 text-slate-300">
-                    If you started with a manual allotment, your dashboard and planner
-                    will use that starting amount until purchase history is added.
+                    If you started with a manual allotment, your dashboard and
+                    planner will use that starting amount until purchase history
+                    is added.
                   </p>
                 </div>
               </div>
@@ -702,11 +658,7 @@ export default function ToolsPage() {
                   </button>
                 </div>
 
-                {isLoadingFavorites ? (
-                  <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/40 px-4 py-4 text-sm text-slate-400">
-                    Loading favorites...
-                  </div>
-                ) : favoriteDispensaries.length > 0 ? (
+                {favoriteDispensaries.length > 0 ? (
                   <div className="space-y-2">
                     {favoriteDispensaries.map((dispensary) => (
                       <div
@@ -802,11 +754,7 @@ export default function ToolsPage() {
                   {isSavingPurchase ? "Saving..." : "Add Favorite Purchase"}
                 </button>
 
-                {isLoadingFavorites ? (
-                  <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/40 px-4 py-4 text-sm text-slate-400">
-                    Loading favorites...
-                  </div>
-                ) : favoritePurchases.length > 0 ? (
+                {favoritePurchases.length > 0 ? (
                   <div className="space-y-2">
                     {favoritePurchases.map((purchase) => (
                       <div
@@ -824,7 +772,9 @@ export default function ToolsPage() {
 
                         <button
                           type="button"
-                          onClick={() => handleRemoveFavoritePurchase(purchase.id)}
+                          onClick={() =>
+                            handleRemoveFavoritePurchase(purchase.id)
+                          }
                           disabled={removingPurchaseId === purchase.id}
                           className="text-xs font-semibold text-rose-300 transition hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
                         >
