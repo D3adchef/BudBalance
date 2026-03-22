@@ -6,36 +6,52 @@ import { useAllotmentStore } from "../features/allotment/allotmentStore"
 
 export default function SplashPage() {
   const navigate = useNavigate()
+
   const currentUser = useAuthStore((state) => state.currentUser)
+  const isAuthReady = useAuthStore((state) => state.isAuthReady)
+
   const hasCompletedInitialSetup = useAllotmentStore(
     (state) => state.allotment.hasCompletedInitialSetup
   )
+  const isAllotmentLoading = useAllotmentStore((state) => state.isLoading)
+
   const [fadeOut, setFadeOut] = useState(false)
 
   useEffect(() => {
-    const fadeTimer = window.setTimeout(() => {
+    if (!isAuthReady) return
+
+    const minimumDisplayTimer = window.setTimeout(() => {
+      if (currentUser && isAllotmentLoading) {
+        return
+      }
+
       setFadeOut(true)
-    }, 2300)
 
-    const navigateTimer = window.setTimeout(() => {
-      if (!currentUser) {
-        navigate("/login", { replace: true })
-        return
-      }
+      window.setTimeout(() => {
+        if (!currentUser) {
+          navigate("/login", { replace: true })
+          return
+        }
 
-      if (!hasCompletedInitialSetup) {
-        navigate("/first-time-allotment-setup", { replace: true })
-        return
-      }
+        if (!hasCompletedInitialSetup) {
+          navigate("/first-time-allotment-setup", { replace: true })
+          return
+        }
 
-      navigate("/dashboard", { replace: true })
-    }, 3000)
+        navigate("/dashboard", { replace: true })
+      }, 700)
+    }, 1800)
 
     return () => {
-      window.clearTimeout(fadeTimer)
-      window.clearTimeout(navigateTimer)
+      window.clearTimeout(minimumDisplayTimer)
     }
-  }, [navigate, currentUser, hasCompletedInitialSetup])
+  }, [
+    navigate,
+    currentUser,
+    isAuthReady,
+    hasCompletedInitialSetup,
+    isAllotmentLoading,
+  ])
 
   return (
     <div

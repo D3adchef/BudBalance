@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { usePurchaseStore } from "../features/purchases/purchaseStore"
 import { useSettingsStore } from "../features/settings/settingsStore"
 import { useAllotmentStore } from "../features/allotment/allotmentStore"
@@ -42,21 +42,8 @@ function getFirstDayOfMonth(year: number, month: number) {
 
 export default function DashboardPage() {
   const purchases = usePurchaseStore((state) => state.purchases)
-
   const settings = useSettingsStore((state) => state.settings)
-  const loadSettingsForCurrentUser = useSettingsStore(
-    (state) => state.loadSettingsForCurrentUser
-  )
-
   const allotment = useAllotmentStore((state) => state.allotment)
-  const loadAllotmentForCurrentUser = useAllotmentStore(
-    (state) => state.loadAllotmentForCurrentUser
-  )
-
-  useEffect(() => {
-    loadSettingsForCurrentUser()
-    loadAllotmentForCurrentUser()
-  }, [loadSettingsForCurrentUser, loadAllotmentForCurrentUser])
 
   const allotmentLimit = settings.allotmentLimit
 
@@ -82,18 +69,30 @@ export default function DashboardPage() {
     )
   }, [purchasesThatCount])
 
+  const hasCorrectedCurrentAllotment =
+    allotment.correctedCurrentAllotment !== null
+
   const isUsingManualDashboardValues =
+    !hasCorrectedCurrentAllotment &&
     allotment.setupMode === "manual" &&
     allotment.manualStartingAllotment !== null &&
     purchasesThatCount.length === 0
 
-  const usedGrams = isUsingManualDashboardValues
-    ? roundToTwo(Math.max(allotmentLimit - allotment.manualStartingAllotment!, 0))
-    : usedGramsFromPurchases
+  const usedGrams = hasCorrectedCurrentAllotment
+    ? roundToTwo(
+        Math.max(allotmentLimit - allotment.correctedCurrentAllotment!, 0)
+      )
+    : isUsingManualDashboardValues
+      ? roundToTwo(
+          Math.max(allotmentLimit - allotment.manualStartingAllotment!, 0)
+        )
+      : usedGramsFromPurchases
 
-  const remainingGrams = isUsingManualDashboardValues
-    ? roundToTwo(allotment.manualStartingAllotment!)
-    : roundToTwo(Math.max(allotmentLimit - usedGramsFromPurchases, 0))
+  const remainingGrams = hasCorrectedCurrentAllotment
+    ? roundToTwo(allotment.correctedCurrentAllotment!)
+    : isUsingManualDashboardValues
+      ? roundToTwo(allotment.manualStartingAllotment!)
+      : roundToTwo(Math.max(allotmentLimit - usedGramsFromPurchases, 0))
 
   const percentUsed =
     allotmentLimit > 0 ? Math.min((usedGrams / allotmentLimit) * 100, 100) : 0
@@ -219,7 +218,9 @@ export default function DashboardPage() {
             )}
 
             {activeBubble.type === "purchase" && purchaseEvents.length > 0 && (
-              <p className="text-[9px] text-red-300">-{purchaseTotal}g used</p>
+              <p className="text-[9px] text-red-300">
+                -{purchaseTotal}g used
+              </p>
             )}
           </div>
         )}
@@ -295,14 +296,23 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {allotment.setupMode === "manual" &&
+          {hasCorrectedCurrentAllotment && (
+            <div className="mt-3 rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-3">
+              <p className="text-xs text-slate-300">
+                You are currently using a corrected current allotment value from
+                your account settings.
+              </p>
+            </div>
+          )}
+
+          {!hasCorrectedCurrentAllotment &&
+            allotment.setupMode === "manual" &&
             allotment.manualStartingAllotment !== null &&
             purchasesThatCount.length === 0 && (
               <div className="mt-3 rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-3">
                 <p className="text-xs text-slate-300">
                   You are currently using your manual starting allotment as your
-                  baseline. Historical purchases that do not count toward allotment
-                  will stay visible in purchase history without reducing this balance.
+                  baseline.
                 </p>
               </div>
             )}
@@ -316,44 +326,9 @@ export default function DashboardPage() {
             <h3 className="mt-1 text-base font-semibold text-white">
               {getMonthName(today)}
             </h3>
-            <p className="mt-1 text-[11px] text-slate-400">
-              Track allotment used and returning by date.
-            </p>
           </div>
 
-          <div className="grid grid-cols-7 gap-1 text-center text-[9px] font-medium uppercase tracking-wide text-slate-500">
-            <div>Sun</div>
-            <div>Mon</div>
-            <div>Tue</div>
-            <div>Wed</div>
-            <div>Thu</div>
-            <div>Fri</div>
-            <div>Sat</div>
-          </div>
-
-          <div className="mt-2 grid grid-cols-7 gap-1">{calendarCells}</div>
-
-          <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/70 p-2.5">
-            <div className="space-y-1.5">
-              <div className="flex items-start gap-2">
-                <span className="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 text-[9px] font-bold text-emerald-400">
-                  +
-                </span>
-                <p className="text-[11px] text-slate-300">
-                  Tap green + to see allotment returning.
-                </p>
-              </div>
-
-              <div className="flex items-start gap-2">
-                <span className="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-red-500/30 bg-red-500/15 text-[9px] font-bold text-red-400">
-                  −
-                </span>
-                <p className="text-[11px] text-slate-300">
-                  Tap red − to see allotment used.
-                </p>
-              </div>
-            </div>
-          </div>
+          <div className="grid grid-cols-7 gap-1">{calendarCells}</div>
         </section>
       </div>
     </>

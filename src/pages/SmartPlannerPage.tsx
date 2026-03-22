@@ -2,7 +2,6 @@ import { useMemo, useState } from "react"
 import SectionCard from "../components/SectionCard"
 import PageIntroPopup from "../components/PageIntroPopup"
 import { usePurchaseStore } from "../features/purchases/purchaseStore"
-import { useSettingsStore } from "../features/settings/settingsStore"
 import { useAllotmentStore } from "../features/allotment/allotmentStore"
 
 type BuilderItem = {
@@ -12,6 +11,8 @@ type BuilderItem = {
 }
 
 type OpenSection = "status" | "usage" | "insights" | "builder" | null
+
+const STATE_ALLOTMENT_LIMIT = 84.03
 
 function createEmptyBuilderItem(): BuilderItem {
   return {
@@ -69,9 +70,6 @@ function CollapseHeader({
 
 export default function SmartPlannerPage() {
   const purchases = usePurchaseStore((state) => state.purchases)
-  const allotmentLimit = useSettingsStore(
-    (state) => state.settings.allotmentLimit
-  )
   const allotment = useAllotmentStore((state) => state.allotment)
 
   const [builderItems, setBuilderItems] = useState<BuilderItem[]>([
@@ -121,16 +119,23 @@ export default function SmartPlannerPage() {
       0
     )
 
+    const hasCorrectedCurrentAllotment =
+      allotment.correctedCurrentAllotment !== null
+
     const isUsingManualAllotment =
+      !hasCorrectedCurrentAllotment &&
       allotment.setupMode === "manual" &&
       allotment.manualStartingAllotment !== null
 
-    const baselineAllotment = isUsingManualAllotment
-      ? allotment.manualStartingAllotment!
-      : allotmentLimit
+    const activeGrams = hasCorrectedCurrentAllotment
+      ? Math.max(0, STATE_ALLOTMENT_LIMIT - allotment.correctedCurrentAllotment!)
+      : activeGramsFromPurchases
 
-    const activeGrams = activeGramsFromPurchases
-    const remainingGrams = Math.max(0, baselineAllotment - activeGramsFromPurchases)
+    const remainingGrams = hasCorrectedCurrentAllotment
+      ? Math.max(0, allotment.correctedCurrentAllotment!)
+      : isUsingManualAllotment
+        ? Math.max(0, allotment.manualStartingAllotment!)
+        : Math.max(0, STATE_ALLOTMENT_LIMIT - activeGramsFromPurchases)
 
     const monthlyMap = new Map<string, { label: string; grams: number }>()
 
@@ -222,7 +227,6 @@ export default function SmartPlannerPage() {
         : 0
 
     return {
-      baselineAllotment,
       activeGrams,
       remainingGrams,
       monthlyData,
@@ -236,8 +240,9 @@ export default function SmartPlannerPage() {
       statusTone,
       usageDifferencePct,
       isUsingManualAllotment,
+      hasCorrectedCurrentAllotment,
     }
-  }, [purchases, allotmentLimit, allotment])
+  }, [purchases, allotment])
 
   const maxGrams = Math.max(
     ...analytics.monthlyData.map((month) => month.grams),
@@ -337,10 +342,10 @@ export default function SmartPlannerPage() {
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-2.5">
                   <p className="text-[10px] uppercase tracking-wide text-slate-400">
-                    Available Grams
+                    Current Grams
                   </p>
                   <p className="mt-1 text-lg font-semibold text-white">
-                    {analytics.remainingGrams.toFixed(1)}g
+                    {analytics.remainingGrams.toFixed(2)}g
                   </p>
                 </div>
 
@@ -349,7 +354,7 @@ export default function SmartPlannerPage() {
                     Allotment Limit
                   </p>
                   <p className="mt-1 text-lg font-semibold text-white">
-                    {analytics.baselineAllotment.toFixed(2)}g
+                    {STATE_ALLOTMENT_LIMIT.toFixed(2)}g
                   </p>
                 </div>
 
@@ -364,7 +369,7 @@ export default function SmartPlannerPage() {
 
                 <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-2.5">
                   <p className="text-[10px] uppercase tracking-wide text-slate-400">
-                    Daily Pace
+                    Historical Pace
                   </p>
                   <p className="mt-1 text-lg font-semibold text-white">
                     {analytics.dailyBurnRate.toFixed(2)}g
@@ -372,15 +377,25 @@ export default function SmartPlannerPage() {
                 </div>
               </div>
 
-              {analytics.isUsingManualAllotment && (
+              {analytics.hasCorrectedCurrentAllotment && (
                 <div className="mt-3 rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-3">
                   <p className="text-xs text-slate-300">
-                    You are currently using a manually entered starting allotment.
-                    Historical purchases that do not count toward allotment can still
-                    be saved in purchase history without lowering this balance.
+                    You are currently using a corrected current allotment value
+                    from your account settings.
                   </p>
                 </div>
               )}
+
+              {!analytics.hasCorrectedCurrentAllotment &&
+                analytics.isUsingManualAllotment && (
+                  <div className="mt-3 rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-3">
+                    <p className="text-xs text-slate-300">
+                      You are currently using a manually entered starting allotment.
+                      Historical purchases that do not count toward allotment can still
+                      be saved in purchase history without lowering this balance.
+                    </p>
+                  </div>
+                )}
             </div>
           )}
 
@@ -456,7 +471,7 @@ export default function SmartPlannerPage() {
                   <p className="text-sm text-slate-200">
                     You currently have{" "}
                     <span className="font-semibold text-white">
-                      {analytics.remainingGrams.toFixed(1)}g
+                      {analytics.remainingGrams.toFixed(2)}g
                     </span>{" "}
                     remaining in your active 30-day window.
                   </p>
@@ -464,11 +479,11 @@ export default function SmartPlannerPage() {
 
                 <div className="rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-3">
                   <p className="text-sm text-slate-200">
-                    At your current pace of{" "}
+                    Based on your recorded purchase history, your pace is{" "}
                     <span className="font-semibold text-white">
                       {analytics.dailyBurnRate.toFixed(2)}g/day
                     </span>
-                    , you are projected to need about{" "}
+                    , and you are projected to need about{" "}
                     <span className="font-semibold text-white">
                       {analytics.projectedNeedBeforeRefill.toFixed(1)}g
                     </span>{" "}
@@ -480,7 +495,7 @@ export default function SmartPlannerPage() {
                   <p className="text-sm text-slate-200">
                     {analytics.projectedShortfall > 0 ? (
                       <>
-                        Warning: at your current pace, you may run short by about{" "}
+                        Warning: at your recorded pace, you may run short by about{" "}
                         <span className="font-semibold text-rose-300">
                           {analytics.projectedShortfall.toFixed(1)}g
                         </span>{" "}

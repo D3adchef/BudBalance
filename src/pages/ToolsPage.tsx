@@ -4,12 +4,10 @@ import PageIntroPopup from "../components/PageIntroPopup"
 import { supabase } from "../lib/supabase"
 import { useAuthStore } from "../features/auth/authStore"
 import { useFavoritesStore } from "../features/favorites/favoritesStore"
-import { useSettingsStore } from "../features/settings/settingsStore"
 import { useAllotmentStore } from "../features/allotment/allotmentStore"
 
 type OpenSection =
   | "account"
-  | "allotment"
   | "dispensaries"
   | "purchases"
   | "help"
@@ -198,11 +196,10 @@ export default function ToolsPage() {
     (state) => state.removeFavoritePurchase
   )
 
-  const allotmentLimit = useSettingsStore(
-    (state) => state.settings.allotmentLimit
-  )
-
   const allotment = useAllotmentStore((state) => state.allotment)
+  const adjustCurrentAllotment = useAllotmentStore(
+    (state) => state.adjustCurrentAllotment
+  )
 
   const [profile, setProfile] = useState<ProfileRecord | null>(null)
   const [openSection, setOpenSection] = useState<OpenSection>(null)
@@ -237,6 +234,13 @@ export default function ToolsPage() {
   const [removingDispensaryName, setRemovingDispensaryName] = useState("")
   const [removingPurchaseId, setRemovingPurchaseId] = useState("")
 
+  const [isAllotmentModalOpen, setIsAllotmentModalOpen] = useState(false)
+  const [adjustedAllotmentInput, setAdjustedAllotmentInput] = useState("")
+  const [isSavingAdjustedAllotment, setIsSavingAdjustedAllotment] =
+    useState(false)
+  const [adjustAllotmentError, setAdjustAllotmentError] = useState("")
+  const [adjustAllotmentMessage, setAdjustAllotmentMessage] = useState("")
+
   useEffect(() => {
     const loadProfile = async () => {
       if (!currentUser) {
@@ -268,6 +272,15 @@ export default function ToolsPage() {
     setEditEmail(profile?.email || currentUser?.email || "")
     setEditMobile(profile?.mobile || "")
   }, [profile, currentUser])
+
+  useEffect(() => {
+    const currentValue =
+      allotment.correctedCurrentAllotment !== null
+        ? allotment.correctedCurrentAllotment.toFixed(2)
+        : ""
+
+    setAdjustedAllotmentInput(currentValue)
+  }, [allotment.correctedCurrentAllotment])
 
   function toggleSection(section: Exclude<OpenSection, null>) {
     setOpenSection((prev) => (prev === section ? null : section))
@@ -387,7 +400,11 @@ export default function ToolsPage() {
     const trimmedNewPassword = newPasswordInput.trim()
     const trimmedConfirmPassword = confirmNewPasswordInput.trim()
 
-    if (!trimmedCurrentPassword || !trimmedNewPassword || !trimmedConfirmPassword) {
+    if (
+      !trimmedCurrentPassword ||
+      !trimmedNewPassword ||
+      !trimmedConfirmPassword
+    ) {
       setPasswordError("Please complete all password fields.")
       return
     }
@@ -427,6 +444,58 @@ export default function ToolsPage() {
     setConfirmNewPasswordInput("")
   }
 
+  function openAllotmentModal() {
+    setAdjustAllotmentError("")
+    setAdjustAllotmentMessage("")
+    setAdjustedAllotmentInput(
+      allotment.correctedCurrentAllotment !== null
+        ? allotment.correctedCurrentAllotment.toFixed(2)
+        : ""
+    )
+    setIsAllotmentModalOpen(true)
+  }
+
+  function closeAllotmentModal() {
+    if (isSavingAdjustedAllotment) return
+    setIsAllotmentModalOpen(false)
+    setAdjustAllotmentError("")
+    setAdjustAllotmentMessage("")
+  }
+
+  async function handleAdjustAllotment() {
+    setAdjustAllotmentError("")
+    setAdjustAllotmentMessage("")
+
+    const safeGrams = Number(adjustedAllotmentInput)
+
+    if (Number.isNaN(safeGrams) || safeGrams < 0) {
+      setAdjustAllotmentError("Please enter a valid allotment amount.")
+      return
+    }
+
+    const secondWarning = window.confirm(
+      "Are you sure? This should only be used if your current BudBalance allotment does not match your real available allotment."
+    )
+
+    if (!secondWarning) return
+
+    setIsSavingAdjustedAllotment(true)
+
+    try {
+      await adjustCurrentAllotment(safeGrams)
+      setAdjustAllotmentMessage("Current allotment updated successfully.")
+      setTimeout(() => {
+        setIsAllotmentModalOpen(false)
+        setAdjustAllotmentMessage("")
+      }, 900)
+    } catch (error) {
+      console.error("Failed to adjust allotment:", error)
+      setAdjustAllotmentError("Unable to update allotment right now.")
+    } finally {
+      setIsSavingAdjustedAllotment(false)
+    }
+  }
+
   async function handleDeleteAccount() {
     const confirmed = window.confirm(
       "Are you sure you want to delete this account? This cannot be undone."
@@ -446,13 +515,6 @@ export default function ToolsPage() {
   function handleContactUs() {
     window.location.href = "mailto:j.marquis504@proton.me"
   }
-
-  const setupMethodLabel =
-    allotment.setupMode === "manual"
-      ? "Manual starting allotment"
-      : allotment.setupMode === "purchases"
-        ? "Purchase-based setup"
-        : "Not started"
 
   return (
     <>
@@ -556,6 +618,14 @@ export default function ToolsPage() {
                       Delete Account
                     </button>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={openAllotmentModal}
+                    className="w-full rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/15"
+                  >
+                    Correct Current Allotment
+                  </button>
 
                   <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-4">
                     <div className="mb-3">
@@ -698,66 +768,6 @@ export default function ToolsPage() {
                   </div>
                 </div>
               )}
-            </div>
-          )}
-
-          <CollapseHeader
-            title="Allotment Setup"
-            isOpen={openSection === "allotment"}
-            onClick={() => toggleSection("allotment")}
-          />
-
-          {openSection === "allotment" && (
-            <div className="rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-4">
-              <div className="space-y-3">
-                <div className="rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-3">
-                  <p className="text-[11px] uppercase tracking-wide text-slate-400">
-                    Current Allotment Limit
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-white">
-                    {allotmentLimit.toFixed(2)}g
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-3">
-                  <p className="text-[11px] uppercase tracking-wide text-slate-400">
-                    Setup Method
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-white">
-                    {setupMethodLabel}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-3">
-                  <p className="text-[11px] uppercase tracking-wide text-slate-400">
-                    Initial Setup Status
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-white">
-                    {allotment.hasCompletedInitialSetup
-                      ? "Completed"
-                      : "Not completed"}
-                  </p>
-                </div>
-
-                {allotment.manualStartingAllotment !== null && (
-                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-3">
-                    <p className="text-[11px] uppercase tracking-wide text-emerald-300">
-                      Manual Starting Allotment
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-white">
-                      {allotment.manualStartingAllotment.toFixed(2)}g
-                    </p>
-                  </div>
-                )}
-
-                <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-3">
-                  <p className="text-xs leading-5 text-slate-300">
-                    If you started with a manual allotment, your dashboard and
-                    planner will use that starting amount until purchase history
-                    is added.
-                  </p>
-                </div>
-              </div>
             </div>
           )}
 
@@ -1018,6 +1028,80 @@ export default function ToolsPage() {
           Log Out
         </button>
       </div>
+
+      {isAllotmentModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="relative w-full max-w-sm rounded-3xl border border-white/10 bg-slate-950 p-5 text-white shadow-[0_0_40px_rgba(0,0,0,0.55)]">
+            <button
+              type="button"
+              onClick={closeAllotmentModal}
+              className="absolute right-4 top-4 text-sm text-slate-400 transition hover:text-white"
+              aria-label="Close current allotment correction"
+            >
+              ✕
+            </button>
+
+            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
+              Account Correction
+            </p>
+
+            <h2 className="mt-2 text-lg font-semibold text-white">
+              Correct Current Allotment
+            </h2>
+
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              This number should match your real current available allotment.
+              Enter it carefully before saving.
+            </p>
+
+            {adjustAllotmentMessage && (
+              <div className="mt-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                {adjustAllotmentMessage}
+              </div>
+            )}
+
+            {adjustAllotmentError && (
+              <div className="mt-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                {adjustAllotmentError}
+              </div>
+            )}
+
+            <div className="mt-4">
+              <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
+                Current Available Allotment
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={adjustedAllotmentInput}
+                onChange={(e) => setAdjustedAllotmentInput(e.target.value)}
+                className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={closeAllotmentModal}
+                disabled={isSavingAdjustedAllotment}
+                className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleAdjustAllotment}
+                disabled={isSavingAdjustedAllotment}
+                className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSavingAdjustedAllotment ? "Saving..." : "Update Current"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedGlossaryTerm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">

@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { supabase } from "../../lib/supabase"
 import { useAuthStore } from "../auth/authStore"
+import { useAllotmentStore } from "../allotment/allotmentStore"
 
 export type PurchaseItem = {
   id: string
@@ -29,6 +30,8 @@ type PurchaseStore = {
   isLoading: boolean
   loadPurchasesForCurrentUser: () => Promise<void>
   addPurchase: (purchase: Purchase) => Promise<void>
+  updatePurchase: (purchase: Purchase) => Promise<void>
+  deletePurchase: (purchaseId: string) => Promise<void>
   clearPurchases: () => Promise<void>
 }
 
@@ -155,6 +158,38 @@ function sortPurchasesNewestFirst(purchases: Purchase[]) {
   })
 }
 
+function getPurchaseTotalGrams(purchase: Purchase) {
+  return purchase.items.reduce((total, item) => total + Number(item.grams || 0), 0)
+}
+
+function isPurchaseActive(purchase: Purchase) {
+  if (!purchase.countsTowardAllotment) return false
+
+  const now = new Date()
+  const purchaseDateTime = new Date(
+    purchase.purchaseDateTime ||
+      buildPurchaseDateTime(purchase.purchaseDate, purchase.purchaseTime)
+  )
+
+  if (Number.isNaN(purchaseDateTime.getTime())) return false
+  if (purchaseDateTime > now) return false
+
+  const diffMs = now.getTime() - purchaseDateTime.getTime()
+  const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000
+
+  return diffMs < thirtyDaysMs
+}
+
+async function applyCorrectedAllotmentDelta(deltaAvailable: number) {
+  const { correctedCurrentAllotment } = useAllotmentStore.getState().allotment
+
+  if (correctedCurrentAllotment === null) return
+  if (!deltaAvailable) return
+
+  const nextValue = Math.max(0, correctedCurrentAllotment + deltaAvailable)
+  await useAllotmentStore.getState().adjustCurrentAllotment(nextValue)
+}
+
 export function getPurchasesOldestFirst(purchases: Purchase[]) {
   return [...purchases].sort((a, b) => {
     const aTime = new Date(
@@ -219,11 +254,103 @@ export const usePurchaseStore = create<PurchaseStore>((set, get) => ({
       throw new Error(error.message)
     }
 
+    if (isPurchaseActive(normalizedPurchase)) {
+      await applyCorrectedAllotmentDelta(-getPurchaseTotalGrams(normalizedPurchase))
+    }
+
     set({
       purchases: sortPurchasesNewestFirst([
         normalizedPurchase,
         ...get().purchases,
       ]),
+    })
+  },
+
+  updatePurchase: async (purchase) => {
+    const currentUser = useAuthStore.getState().currentUser
+    if (!currentUser) return
+
+    const normalizedPurchase = normalizePurchase(purchase)
+    const existingPurchase = get().purchases.find(
+      (entry) => entry.id === normalizedPurchase.id
+    )
+
+    if (!existingPurchase) {
+      throw new Error("Purchase not found.")
+    }
+
+    const { error } = await supabase
+      .from("purchases")
+      .update({
+        purchase_date: normalizedPurchase.purchaseDate,
+        purchase_time: normalizedPurchase.purchaseTime,
+        purchase_datetime: normalizedPurchase.purchaseDateTime,
+        dispensary: normalizedPurchase.dispensary || null,
+        notes: normalizedPurchase.notes || null,
+        source: normalizedPurchase.source || "manual",
+        counts_toward_allotment: normalizedPurchase.countsTowardAllotment,
+        entry_mode: normalizedPurchase.entryMode,
+        items: normalizedPurchase.items,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", normalizedPurchase.id)
+      .eq("user_id", currentUser.id)
+
+    if (error) {
+      console.error("Failed to update purchase:", error)
+      throw new Error(error.message)
+    }
+
+    const oldActiveTotal = isPurchaseActive(existingPurchase)
+      ? getPurchaseTotalGrams(existingPurchase)
+      : 0
+
+    const newActiveTotal = isPurchaseActive(normalizedPurchase)
+      ? getPurchaseTotalGrams(normalizedPurchase)
+      : 0
+
+    const deltaAvailable = oldActiveTotal - newActiveTotal
+
+    if (deltaAvailable !== 0) {
+      await applyCorrectedAllotmentDelta(deltaAvailable)
+    }
+
+    set({
+      purchases: sortPurchasesNewestFirst(
+        get().purchases.map((entry) =>
+          entry.id === normalizedPurchase.id ? normalizedPurchase : entry
+        )
+      ),
+    })
+  },
+
+  deletePurchase: async (purchaseId) => {
+    const currentUser = useAuthStore.getState().currentUser
+    if (!currentUser) return
+
+    const existingPurchase = get().purchases.find((entry) => entry.id === purchaseId)
+
+    if (!existingPurchase) {
+      throw new Error("Purchase not found.")
+    }
+
+    const { error } = await supabase
+      .from("purchases")
+      .delete()
+      .eq("id", purchaseId)
+      .eq("user_id", currentUser.id)
+
+    if (error) {
+      console.error("Failed to delete purchase:", error)
+      throw new Error(error.message)
+    }
+
+    if (isPurchaseActive(existingPurchase)) {
+      await applyCorrectedAllotmentDelta(getPurchaseTotalGrams(existingPurchase))
+    }
+
+    set({
+      purchases: get().purchases.filter((entry) => entry.id !== purchaseId),
     })
   },
 

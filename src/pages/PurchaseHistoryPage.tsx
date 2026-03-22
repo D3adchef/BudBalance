@@ -1,25 +1,20 @@
 import { useMemo, useState } from "react"
 import PurchaseHistoryItem from "../components/PurchaseHistoryItem"
 import PageIntroPopup from "../components/PageIntroPopup"
-import { usePurchaseStore } from "../features/purchases/purchaseStore"
+import {
+  type Purchase,
+  usePurchaseStore,
+} from "../features/purchases/purchaseStore"
 
 type OpenSection = "saved" | "older" | "rules" | null
 
-type PurchaseLike = {
+type PurchaseLike = Purchase
+
+type EditableDraftItem = {
   id: string
-  purchaseDate: string
-  purchaseTime?: string
-  purchaseDateTime?: string
-  dispensary: string
-  source: string
-  items: {
-    id: string
-    productName: string
-    category: string
-    grams: number
-  }[]
-  countsTowardAllotment: boolean
-  entryMode?: string
+  productName: string
+  category: string
+  grams: string
 }
 
 function getEntryModeLabel(entryMode?: string) {
@@ -129,14 +124,59 @@ function PurchaseMetaCard({ purchase }: { purchase: PurchaseLike }) {
   )
 }
 
+function isPurchaseActive(purchase: PurchaseLike) {
+  if (!purchase.countsTowardAllotment) return false
+
+  const now = new Date()
+  const purchaseDateTime = new Date(
+    purchase.purchaseDateTime || `${purchase.purchaseDate}T${purchase.purchaseTime || "12:00"}`
+  )
+
+  if (Number.isNaN(purchaseDateTime.getTime())) return false
+  if (purchaseDateTime > now) return false
+
+  const diffMs = now.getTime() - purchaseDateTime.getTime()
+  const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000
+
+  return diffMs < thirtyDaysMs
+}
+
+function createEditableItems(purchase: PurchaseLike): EditableDraftItem[] {
+  return purchase.items.map((item) => ({
+    id: item.id,
+    productName: item.productName,
+    category: item.category,
+    grams: String(item.grams),
+  }))
+}
+
+function createEmptyEditableItem(): EditableDraftItem {
+  return {
+    id: crypto.randomUUID(),
+    productName: "",
+    category: "",
+    grams: "",
+  }
+}
+
 export default function PurchaseHistoryPage() {
   const purchases = usePurchaseStore((state) => state.purchases)
+  const updatePurchase = usePurchaseStore((state) => state.updatePurchase)
+  const deletePurchase = usePurchaseStore((state) => state.deletePurchase)
 
   const [openSection, setOpenSection] = useState<OpenSection>("saved")
   const [selectedSavedId, setSelectedSavedId] = useState("")
   const [selectedOlderId, setSelectedOlderId] = useState("")
   const [selectedPurchaseFilter, setSelectedPurchaseFilter] = useState("")
   const [selectedDispensaryFilter, setSelectedDispensaryFilter] = useState("")
+  const [deletingPurchaseId, setDeletingPurchaseId] = useState("")
+  const [editingPurchase, setEditingPurchase] = useState<PurchaseLike | null>(null)
+  const [editDispensary, setEditDispensary] = useState("")
+  const [editPurchaseDate, setEditPurchaseDate] = useState("")
+  const [editPurchaseTime, setEditPurchaseTime] = useState("")
+  const [editNotes, setEditNotes] = useState("")
+  const [editItems, setEditItems] = useState<EditableDraftItem[]>([])
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
 
   const sortedPurchases = useMemo(() => {
     return [...purchases].sort(
@@ -177,8 +217,15 @@ export default function PurchaseHistoryPage() {
     })
   }, [sortedPurchases, selectedPurchaseFilter, selectedDispensaryFilter])
 
-  const savedPurchases = filteredPurchases.slice(0, 3)
-  const olderPurchases = filteredPurchases.slice(3)
+  const savedPurchases = useMemo(
+    () => filteredPurchases.filter((purchase) => isPurchaseActive(purchase)),
+    [filteredPurchases]
+  )
+
+  const olderPurchases = useMemo(
+    () => filteredPurchases.filter((purchase) => !isPurchaseActive(purchase)),
+    [filteredPurchases]
+  )
 
   const selectedSavedPurchase =
     savedPurchases.find((purchase) => purchase.id === selectedSavedId) ?? null
@@ -188,6 +235,136 @@ export default function PurchaseHistoryPage() {
 
   function toggleSection(section: Exclude<OpenSection, null>) {
     setOpenSection((current) => (current === section ? null : section))
+  }
+
+  function openEditPurchase(purchase: PurchaseLike) {
+    setEditingPurchase(purchase)
+    setEditDispensary(purchase.dispensary || "")
+    setEditPurchaseDate(purchase.purchaseDate || "")
+    setEditPurchaseTime(purchase.purchaseTime || "")
+    setEditNotes(purchase.notes || "")
+    setEditItems(
+      purchase.items.length > 0
+        ? createEditableItems(purchase)
+        : [createEmptyEditableItem()]
+    )
+  }
+
+  function closeEditPurchase() {
+    if (isSavingEdit) return
+    setEditingPurchase(null)
+    setEditDispensary("")
+    setEditPurchaseDate("")
+    setEditPurchaseTime("")
+    setEditNotes("")
+    setEditItems([])
+  }
+
+  function updateEditItem(
+    itemId: string,
+    field: keyof Omit<EditableDraftItem, "id">,
+    value: string
+  ) {
+    setEditItems((current) =>
+      current.map((item) =>
+        item.id === itemId ? { ...item, [field]: value } : item
+      )
+    )
+  }
+
+  function addEditItem() {
+    setEditItems((current) => [...current, createEmptyEditableItem()])
+  }
+
+  function removeEditItem(itemId: string) {
+    setEditItems((current) => {
+      if (current.length === 1) return current
+      return current.filter((item) => item.id !== itemId)
+    })
+  }
+
+  async function handleDeletePurchase(purchaseId: string) {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this purchase entry?"
+    )
+
+    if (!confirmed) return
+
+    setDeletingPurchaseId(purchaseId)
+
+    try {
+      await deletePurchase(purchaseId)
+
+      if (selectedSavedId === purchaseId) {
+        setSelectedSavedId("")
+      }
+
+      if (selectedOlderId === purchaseId) {
+        setSelectedOlderId("")
+      }
+
+      if (selectedPurchaseFilter === purchaseId) {
+        setSelectedPurchaseFilter("")
+      }
+    } catch (error) {
+      console.error("Failed to delete purchase:", error)
+      alert("Unable to delete this purchase right now.")
+    } finally {
+      setDeletingPurchaseId("")
+    }
+  }
+
+  async function handleSaveEditedPurchase() {
+    if (!editingPurchase) return
+
+    if (!editPurchaseDate) {
+      alert("Please enter a purchase date.")
+      return
+    }
+
+    if (!editPurchaseTime) {
+      alert("Please enter a purchase time.")
+      return
+    }
+
+    const hasInvalidItem = editItems.some(
+      (item) =>
+        !item.productName.trim() ||
+        !item.category.trim() ||
+        !item.grams.trim() ||
+        Number(item.grams) <= 0
+    )
+
+    if (hasInvalidItem) {
+      alert("Please complete product name, category, and grams for every item.")
+      return
+    }
+
+    setIsSavingEdit(true)
+
+    try {
+      await updatePurchase({
+        ...editingPurchase,
+        dispensary: editDispensary.trim(),
+        purchaseDate: editPurchaseDate,
+        purchaseTime: editPurchaseTime,
+        purchaseDateTime: `${editPurchaseDate}T${editPurchaseTime}`,
+        notes: editNotes.trim(),
+        items: editItems.map((item) => ({
+          id: item.id,
+          productName: item.productName.trim(),
+          category: item.category.trim(),
+          grams: Number(item.grams),
+        })),
+      })
+
+      closeEditPurchase()
+    } catch (error) {
+      console.error("Failed to update purchase:", error)
+      alert("Unable to save purchase changes right now.")
+    } finally {
+      setIsSavingEdit(false)
+    }
   }
 
   return (
@@ -214,7 +391,7 @@ export default function PurchaseHistoryPage() {
               Saved Purchases
             </p>
             <p className="mt-1 text-xl font-semibold text-white">
-              {purchases.length}
+              {savedPurchases.length}
             </p>
           </div>
 
@@ -338,6 +515,7 @@ export default function PurchaseHistoryPage() {
                       <PurchaseHistoryItem
                         key={selectedSavedPurchase.id}
                         purchaseDate={selectedSavedPurchase.purchaseDate}
+                        purchaseTime={selectedSavedPurchase.purchaseTime}
                         dispensary={selectedSavedPurchase.dispensary}
                         source={selectedSavedPurchase.source}
                         items={selectedSavedPurchase.items}
@@ -347,6 +525,13 @@ export default function PurchaseHistoryPage() {
                           selectedSavedPurchase.countsTowardAllotment
                         }
                         entryMode={selectedSavedPurchase.entryMode}
+                        canEdit
+                        canDelete
+                        onEdit={() => openEditPurchase(selectedSavedPurchase)}
+                        onDelete={() =>
+                          handleDeletePurchase(selectedSavedPurchase.id)
+                        }
+                        isDeleting={deletingPurchaseId === selectedSavedPurchase.id}
                       />
                     </>
                   )}
@@ -395,6 +580,7 @@ export default function PurchaseHistoryPage() {
                       <PurchaseHistoryItem
                         key={selectedOlderPurchase.id}
                         purchaseDate={selectedOlderPurchase.purchaseDate}
+                        purchaseTime={selectedOlderPurchase.purchaseTime}
                         dispensary={selectedOlderPurchase.dispensary}
                         source={selectedOlderPurchase.source}
                         items={selectedOlderPurchase.items}
@@ -404,6 +590,11 @@ export default function PurchaseHistoryPage() {
                           selectedOlderPurchase.countsTowardAllotment
                         }
                         entryMode={selectedOlderPurchase.entryMode}
+                        canDelete
+                        onDelete={() =>
+                          handleDeletePurchase(selectedOlderPurchase.id)
+                        }
+                        isDeleting={deletingPurchaseId === selectedOlderPurchase.id}
                       />
                     </>
                   )}
@@ -449,6 +640,178 @@ export default function PurchaseHistoryPage() {
           )}
         </div>
       </div>
+
+      {editingPurchase && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-white/10 bg-slate-950 p-5 text-white shadow-[0_0_40px_rgba(0,0,0,0.55)]">
+            <button
+              type="button"
+              onClick={closeEditPurchase}
+              className="absolute right-4 top-4 text-sm text-slate-400 transition hover:text-white"
+              aria-label="Close edit purchase"
+            >
+              ✕
+            </button>
+
+            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
+              Saved Purchase
+            </p>
+
+            <h2 className="mt-2 text-lg font-semibold text-white">
+              Edit Purchase
+            </h2>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
+                  Purchase Date
+                </label>
+                <input
+                  type="date"
+                  value={editPurchaseDate}
+                  onChange={(e) => setEditPurchaseDate(e.target.value)}
+                  className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
+                  Purchase Time
+                </label>
+                <input
+                  type="time"
+                  value={editPurchaseTime}
+                  onChange={(e) => setEditPurchaseTime(e.target.value)}
+                  className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
+                  Dispensary
+                </label>
+                <input
+                  type="text"
+                  value={editDispensary}
+                  onChange={(e) => setEditDispensary(e.target.value)}
+                  className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
+                  Notes
+                </label>
+                <textarea
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  rows={2}
+                  className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="border-t border-white/10 pt-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-white">Items</p>
+                  <button
+                    type="button"
+                    onClick={addEditItem}
+                    className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/15"
+                  >
+                    + Add Item
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {editItems.map((item, index) => (
+                    <div
+                      key={item.id}
+                      className="rounded-2xl border border-white/10 bg-slate-900/70 px-3 py-3"
+                    >
+                      <div className="mb-3 flex items-center justify-between">
+                        <p className="text-sm font-semibold text-white">
+                          Item {index + 1}
+                        </p>
+
+                        {editItems.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeEditItem(item.id)}
+                            className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-rose-300 transition hover:bg-rose-500/15"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-3">
+                        <input
+                          type="text"
+                          placeholder="Product name"
+                          value={item.productName}
+                          onChange={(e) =>
+                            updateEditItem(item.id, "productName", e.target.value)
+                          }
+                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                        />
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <select
+                            value={item.category}
+                            onChange={(e) =>
+                              updateEditItem(item.id, "category", e.target.value)
+                            }
+                            className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                          >
+                            <option value="">Select category</option>
+                            <option value="flower">Flower</option>
+                            <option value="pre-roll">Pre-Roll</option>
+                            <option value="edible">Edible</option>
+                            <option value="vape">Vape</option>
+                            <option value="concentrate">Concentrate</option>
+                          </select>
+
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="Grams"
+                            value={item.grams}
+                            onChange={(e) =>
+                              updateEditItem(item.id, "grams", e.target.value)
+                            }
+                            className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeEditPurchase}
+                  disabled={isSavingEdit}
+                  className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSaveEditedPurchase}
+                  disabled={isSavingEdit}
+                  className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSavingEdit ? "Saving..." : "Save Purchase"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

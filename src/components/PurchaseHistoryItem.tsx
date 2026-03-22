@@ -15,6 +15,11 @@ type PurchaseHistoryItemProps = {
   onToggle: () => void
   countsTowardAllotment?: boolean
   entryMode?: string
+  canEdit?: boolean
+  canDelete?: boolean
+  onEdit?: () => void
+  onDelete?: () => void
+  isDeleting?: boolean
 }
 
 function getCategoryStyles(category: string) {
@@ -88,6 +93,11 @@ export default function PurchaseHistoryItem(props: PurchaseHistoryItemProps) {
     onToggle,
     countsTowardAllotment = true,
     entryMode = "manual",
+    canEdit = false,
+    canDelete = false,
+    onEdit,
+    onDelete,
+    isDeleting = false,
   } = props
 
   const totalGrams = getTotalGrams(items)
@@ -141,6 +151,31 @@ export default function PurchaseHistoryItem(props: PurchaseHistoryItemProps) {
               <p className="text-xs text-slate-400">total</p>
             </div>
           </div>
+
+          {(canEdit || canDelete) && (
+            <div className="mt-3 flex gap-2 border-t border-slate-700 pt-3">
+              {canEdit && onEdit && (
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/15"
+                >
+                  Edit Purchase
+                </button>
+              )}
+
+              {canDelete && onDelete && (
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  disabled={isDeleting}
+                  className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-300 transition hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isDeleting ? "Deleting..." : "Delete Purchase"}
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="mt-3 border-t border-slate-700 pt-3">
             <div className="space-y-3">

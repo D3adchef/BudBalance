@@ -335,6 +335,7 @@ export default function AddPurchasePage() {
   const [isScanning, setIsScanning] = useState(false)
   const [scanStatus, setScanStatus] = useState("")
   const [saveMessage, setSaveMessage] = useState("")
+  const [isSavingPurchase, setIsSavingPurchase] = useState(false)
 
   const purchaseTime = convertTo24HourTime(
     purchaseHour,
@@ -618,7 +619,7 @@ export default function AddPurchasePage() {
     stopCamera()
   }
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
 
     if (!purchaseDate) {
@@ -664,29 +665,38 @@ export default function AddPurchasePage() {
       }
     }
 
-    addPurchase({
-      id: crypto.randomUUID(),
-      purchaseDate,
-      purchaseTime,
-      purchaseDateTime,
-      dispensary,
-      notes,
-      source,
-      countsTowardAllotment,
-      entryMode,
-      items: items.map((item) => ({
-        id: item.id,
-        productName: item.productName,
-        category: item.category,
-        grams: Number(item.grams),
-      })),
-    })
+    setIsSavingPurchase(true)
 
-    setSetupMode("purchases")
-    completeInitialSetup()
+    try {
+      await addPurchase({
+        id: crypto.randomUUID(),
+        purchaseDate,
+        purchaseTime,
+        purchaseDateTime,
+        dispensary,
+        notes,
+        source,
+        countsTowardAllotment,
+        entryMode,
+        items: items.map((item) => ({
+          id: item.id,
+          productName: item.productName,
+          category: item.category,
+          grams: Number(item.grams),
+        })),
+      })
 
-    resetForm()
-    setSaveMessage("Purchase saved. You can add another one now.")
+      await setSetupMode("purchases")
+      await completeInitialSetup()
+
+      resetForm()
+      setSaveMessage("Purchase saved. You can add another one now.")
+    } catch (error) {
+      console.error("Failed to save purchase:", error)
+      alert("Unable to save purchase right now. Please try again.")
+    } finally {
+      setIsSavingPurchase(false)
+    }
   }
 
   return (
@@ -1093,9 +1103,10 @@ export default function AddPurchasePage() {
 
           <button
             type="submit"
-            className="w-full rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
+            disabled={isSavingPurchase}
+            className="w-full rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Save Purchase
+            {isSavingPurchase ? "Saving Purchase..." : "Save Purchase"}
           </button>
         </form>
       </div>
