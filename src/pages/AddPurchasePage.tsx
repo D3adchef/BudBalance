@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import type { ChangeEvent, FormEvent } from "react"
 import Tesseract from "tesseract.js"
+import cv from "@techstark/opencv-js"
 import PageIntroPopup from "../components/PageIntroPopup"
 import { usePurchaseStore } from "../features/purchases/purchaseStore"
 import { useFavoritesStore } from "../features/favorites/favoritesStore"
@@ -329,6 +330,7 @@ export default function AddPurchasePage() {
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
 
   const [receiptImage, setReceiptImage] = useState<string | null>(null)
+  const [ocrImage, setOcrImage] = useState<string | null>(null)
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraError, setCameraError] = useState("")
   const [stream, setStream] = useState<MediaStream | null>(null)
@@ -347,6 +349,10 @@ export default function AddPurchasePage() {
     loadFavoritesForCurrentUser()
     loadAllotmentForCurrentUser()
   }, [loadFavoritesForCurrentUser, loadAllotmentForCurrentUser])
+
+  useEffect(() => {
+    console.log("OpenCV loaded:", cv)
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -391,11 +397,42 @@ export default function AddPurchasePage() {
     return () => window.clearTimeout(timeout)
   }, [saveMessage])
 
+  function preprocessCanvasImage(canvas: HTMLCanvasElement) {
+    const src = cv.imread(canvas)
+    const gray = new cv.Mat()
+    const normalized = new cv.Mat()
+
+    try {
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0)
+      cv.normalize(gray, normalized, 0, 255, cv.NORM_MINMAX)
+      cv.imshow(canvas, normalized)
+    } finally {
+      src.delete()
+      gray.delete()
+      normalized.delete()
+    }
+  }
+
+  function buildProcessedImageFromCanvas(sourceCanvas: HTMLCanvasElement) {
+    const tempCanvas = document.createElement("canvas")
+    tempCanvas.width = sourceCanvas.width
+    tempCanvas.height = sourceCanvas.height
+
+    const tempContext = tempCanvas.getContext("2d")
+    if (!tempContext) return null
+
+    tempContext.drawImage(sourceCanvas, 0, 0)
+    preprocessCanvasImage(tempCanvas)
+
+    return tempCanvas.toDataURL("image/png")
+  }
+
   async function startCamera() {
     try {
       stopCamera()
       setCameraError("")
       setReceiptImage(null)
+      setOcrImage(null)
       setScanStatus("")
       setSaveMessage("")
 
@@ -454,8 +491,11 @@ export default function AddPurchasePage() {
 
     context.drawImage(video, 0, 0, canvas.width, canvas.height)
 
-    const imageDataUrl = canvas.toDataURL("image/png")
-    setReceiptImage(imageDataUrl)
+    const rawImageDataUrl = canvas.toDataURL("image/png")
+    const processedImageDataUrl = buildProcessedImageFromCanvas(canvas)
+
+    setReceiptImage(rawImageDataUrl)
+    setOcrImage(processedImageDataUrl)
     setCameraError("")
     setScanStatus("Receipt image ready to scan.")
     setSaveMessage("")
@@ -464,16 +504,46 @@ export default function AddPurchasePage() {
 
   function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
-    if (!file) return
+    if (!file || !canvasRef.current) return
 
     const reader = new FileReader()
 
     reader.onloadend = () => {
-      setReceiptImage(reader.result as string)
-      setCameraError("")
-      setScanStatus("Receipt image ready to scan.")
-      setSaveMessage("")
-      stopCamera()
+      const imageSource = reader.result as string
+      const image = new Image()
+
+      image.onload = () => {
+        const canvas = canvasRef.current
+        if (!canvas) return
+
+        const context = canvas.getContext("2d")
+        if (!context) return
+
+        canvas.width = image.width
+        canvas.height = image.height
+
+        context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+        const rawImage = canvas.toDataURL("image/png")
+        const processedImage = buildProcessedImageFromCanvas(canvas)
+
+        setReceiptImage(rawImage)
+        setOcrImage(processedImage)
+        setCameraError("")
+        setScanStatus("Receipt image ready to scan.")
+        setSaveMessage("")
+        stopCamera()
+      }
+
+      image.onerror = () => {
+        setCameraError("Unable to load that image. Please try another file.")
+      }
+
+      image.src = imageSource
+    }
+
+    reader.onerror = () => {
+      setCameraError("Unable to read that file. Please try again.")
     }
 
     reader.readAsDataURL(file)
@@ -481,6 +551,7 @@ export default function AddPurchasePage() {
 
   function clearImage() {
     setReceiptImage(null)
+    setOcrImage(null)
     setCameraError("")
     setScanStatus("")
   }
@@ -528,7 +599,19 @@ export default function AddPurchasePage() {
       setIsScanning(true)
       setScanStatus("Reading receipt...")
 
-      const result = await Tesseract.recognize(receiptImage, "eng")
+      const imageToScan = ocrImage || receiptImage
+
+      const result = await Tesseract.recognize(imageToScan, "eng", {
+        logger: (message) => {
+          if (
+            message.status === "recognizing text" &&
+            typeof message.progress === "number"
+          ) {
+            setScanStatus(`Reading receipt... ${Math.round(message.progress * 100)}%`)
+          }
+        },
+      })
+
       const parsed = parseReceiptText(result.data.text)
 
       if (parsed.dispensary) {
@@ -614,6 +697,7 @@ export default function AddPurchasePage() {
     setItems([firstItem])
     setExpandedItemId(null)
     setReceiptImage(null)
+    setOcrImage(null)
     setCameraError("")
     setScanStatus("")
     stopCamera()
