@@ -15,31 +15,12 @@ import FirstTimeAllotmentSetupPage from "../pages/FirstTimeAllotmentSetupPage"
 import AppShell from "../components/AppShell"
 import ProtectedRoute from "../components/ProtectedRoute"
 
-import { useAuthStore } from "../features/auth/authStore"
 import { useAllotmentStore } from "../features/allotment/allotmentStore"
 
-function RouteLoadingScreen() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
-      <p className="text-lg animate-pulse">Loading BudBalance...</p>
-    </div>
-  )
-}
-
 function SetupProtectedApp({ children }: { children: React.ReactNode }) {
-  const currentUser = useAuthStore((state) => state.currentUser)
-  const isAuthReady = useAuthStore((state) => state.isAuthReady)
   const hasCompletedInitialSetup = useAllotmentStore(
     (state) => state.allotment.hasCompletedInitialSetup
   )
-
-  if (!isAuthReady) {
-    return <RouteLoadingScreen />
-  }
-
-  if (!currentUser) {
-    return <Navigate to="/login" replace />
-  }
 
   if (!hasCompletedInitialSetup) {
     return <Navigate to="/first-time-allotment-setup" replace />
@@ -49,19 +30,9 @@ function SetupProtectedApp({ children }: { children: React.ReactNode }) {
 }
 
 function SetupPageGuard() {
-  const currentUser = useAuthStore((state) => state.currentUser)
-  const isAuthReady = useAuthStore((state) => state.isAuthReady)
   const hasCompletedInitialSetup = useAllotmentStore(
     (state) => state.allotment.hasCompletedInitialSetup
   )
-
-  if (!isAuthReady) {
-    return <RouteLoadingScreen />
-  }
-
-  if (!currentUser) {
-    return <Navigate to="/login" replace />
-  }
 
   if (hasCompletedInitialSetup) {
     return <Navigate to="/dashboard" replace />

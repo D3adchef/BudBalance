@@ -83,6 +83,20 @@ function formatMemberSince(dateString?: string | null) {
   })
 }
 
+function isStrongPassword(password: string) {
+  const hasUppercase = /[A-Z]/.test(password)
+  const hasNumber = /\d/.test(password)
+  const hasSpecialCharacter = /[^A-Za-z0-9]/.test(password)
+  const hasMinimumLength = password.length >= 6
+
+  return (
+    hasUppercase &&
+    hasNumber &&
+    hasSpecialCharacter &&
+    hasMinimumLength
+  )
+}
+
 const HELP_CONTENT: Record<
   Exclude<HelpKey, null>,
   { title: string; text: string }
@@ -217,6 +231,7 @@ export default function ToolsPage() {
 
   const [isEditingAccount, setIsEditingAccount] = useState(false)
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
   const [editFirstName, setEditFirstName] = useState("")
   const [editLastName, setEditLastName] = useState("")
   const [editEmail, setEditEmail] = useState("")
@@ -227,6 +242,9 @@ export default function ToolsPage() {
   const [confirmNewPasswordInput, setConfirmNewPasswordInput] = useState("")
   const [passwordMessage, setPasswordMessage] = useState("")
   const [passwordError, setPasswordError] = useState("")
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false)
 
   const [favoritesError, setFavoritesError] = useState("")
   const [isSavingDispensary, setIsSavingDispensary] = useState(false)
@@ -392,6 +410,31 @@ export default function ToolsPage() {
     setIsEditingAccount(false)
   }
 
+  function openPasswordModal() {
+    setPasswordMessage("")
+    setPasswordError("")
+    setCurrentPasswordInput("")
+    setNewPasswordInput("")
+    setConfirmNewPasswordInput("")
+    setShowCurrentPassword(false)
+    setShowNewPassword(false)
+    setShowConfirmNewPassword(false)
+    setIsPasswordModalOpen(true)
+  }
+
+  function closePasswordModal() {
+    if (isUpdatingPassword) return
+    setIsPasswordModalOpen(false)
+    setPasswordMessage("")
+    setPasswordError("")
+    setCurrentPasswordInput("")
+    setNewPasswordInput("")
+    setConfirmNewPasswordInput("")
+    setShowCurrentPassword(false)
+    setShowNewPassword(false)
+    setShowConfirmNewPassword(false)
+  }
+
   async function handleUpdatePassword() {
     setPasswordMessage("")
     setPasswordError("")
@@ -409,8 +452,10 @@ export default function ToolsPage() {
       return
     }
 
-    if (trimmedNewPassword.length < 6) {
-      setPasswordError("New password must be at least 6 characters.")
+    if (!isStrongPassword(trimmedNewPassword)) {
+      setPasswordError(
+        "New password must include at least 6 characters, 1 uppercase letter, 1 number, and 1 special character."
+      )
       return
     }
 
@@ -619,84 +664,22 @@ export default function ToolsPage() {
                     </button>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={openAllotmentModal}
-                    className="w-full rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/15"
-                  >
-                    Correct Current Allotment
-                  </button>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={openAllotmentModal}
+                      className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/15"
+                    >
+                      Correct Current Allotment
+                    </button>
 
-                  <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-4">
-                    <div className="mb-3">
-                      <p className="text-sm font-semibold text-white">
-                        Update Password
-                      </p>
-                      <p className="mt-1 text-xs text-slate-400">
-                        Enter your current password, then choose a new one.
-                      </p>
-                    </div>
-
-                    {passwordMessage && (
-                      <div className="mb-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-                        {passwordMessage}
-                      </div>
-                    )}
-
-                    {passwordError && (
-                      <div className="mb-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-                        {passwordError}
-                      </div>
-                    )}
-
-                    <div className="space-y-3">
-                      <div>
-                        <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
-                          Current Password
-                        </label>
-                        <input
-                          type="password"
-                          value={currentPasswordInput}
-                          onChange={(e) => setCurrentPasswordInput(e.target.value)}
-                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
-                          New Password
-                        </label>
-                        <input
-                          type="password"
-                          value={newPasswordInput}
-                          onChange={(e) => setNewPasswordInput(e.target.value)}
-                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
-                          Confirm New Password
-                        </label>
-                        <input
-                          type="password"
-                          value={confirmNewPasswordInput}
-                          onChange={(e) =>
-                            setConfirmNewPasswordInput(e.target.value)
-                          }
-                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
-                        />
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={handleUpdatePassword}
-                        disabled={isUpdatingPassword}
-                        className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {isUpdatingPassword ? "Updating..." : "Update Password"}
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={openPasswordModal}
+                      className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                    >
+                      Update Password
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -1097,6 +1080,150 @@ export default function ToolsPage() {
                 className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isSavingAdjustedAllotment ? "Saving..." : "Update Current"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isPasswordModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="relative w-full max-w-sm rounded-3xl border border-white/10 bg-slate-950 p-5 text-white shadow-[0_0_40px_rgba(0,0,0,0.55)]">
+            <button
+              type="button"
+              onClick={closePasswordModal}
+              className="absolute right-4 top-4 text-sm text-slate-400 transition hover:text-white"
+              aria-label="Close password update"
+            >
+              ✕
+            </button>
+
+            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
+              Account Security
+            </p>
+
+            <h2 className="mt-2 text-lg font-semibold text-white">
+              Update Password
+            </h2>
+
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              Enter your current password, then choose a new password with at
+              least one uppercase letter, one number, and one special character.
+            </p>
+
+            {passwordMessage && (
+              <div className="mt-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                {passwordMessage}
+              </div>
+            )}
+
+            {passwordError && (
+              <div className="mt-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                {passwordError}
+              </div>
+            )}
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
+                  Current Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showCurrentPassword ? "text" : "password"}
+                    value={currentPasswordInput}
+                    onChange={(e) => setCurrentPasswordInput(e.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 pr-12 text-sm text-white outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-lg text-slate-400 transition hover:text-white"
+                    aria-label={
+                      showCurrentPassword
+                        ? "Hide current password"
+                        : "Show current password"
+                    }
+                  >
+                    {showCurrentPassword ? "🙈" : "👁️"}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
+                  New Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    value={newPasswordInput}
+                    onChange={(e) => setNewPasswordInput(e.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 pr-12 text-sm text-white outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-lg text-slate-400 transition hover:text-white"
+                    aria-label={
+                      showNewPassword
+                        ? "Hide new password"
+                        : "Show new password"
+                    }
+                  >
+                    {showNewPassword ? "🙈" : "👁️"}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-slate-400">
+                  Confirm New Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showConfirmNewPassword ? "text" : "password"}
+                    value={confirmNewPasswordInput}
+                    onChange={(e) =>
+                      setConfirmNewPasswordInput(e.target.value)
+                    }
+                    className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 pr-12 text-sm text-white outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowConfirmNewPassword((prev) => !prev)
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-lg text-slate-400 transition hover:text-white"
+                    aria-label={
+                      showConfirmNewPassword
+                        ? "Hide confirm new password"
+                        : "Show confirm new password"
+                    }
+                  >
+                    {showConfirmNewPassword ? "🙈" : "👁️"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={closePasswordModal}
+                disabled={isUpdatingPassword}
+                className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleUpdatePassword}
+                disabled={isUpdatingPassword}
+                className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isUpdatingPassword ? "Updating..." : "Update Password"}
               </button>
             </div>
           </div>

@@ -6,7 +6,7 @@ import {
   usePurchaseStore,
 } from "../features/purchases/purchaseStore"
 
-type OpenSection = "saved" | "older" | "rules" | null
+type OpenSection = "filters" | "saved" | "older" | "rules" | null
 
 type PurchaseLike = Purchase
 
@@ -164,7 +164,7 @@ export default function PurchaseHistoryPage() {
   const updatePurchase = usePurchaseStore((state) => state.updatePurchase)
   const deletePurchase = usePurchaseStore((state) => state.deletePurchase)
 
-  const [openSection, setOpenSection] = useState<OpenSection>("saved")
+  const [openSection, setOpenSection] = useState<OpenSection>(null)
   const [selectedSavedId, setSelectedSavedId] = useState("")
   const [selectedOlderId, setSelectedOlderId] = useState("")
   const [selectedPurchaseFilter, setSelectedPurchaseFilter] = useState("")
@@ -180,7 +180,9 @@ export default function PurchaseHistoryPage() {
 
   const sortedPurchases = useMemo(() => {
     return [...purchases].sort(
-      (a, b) => getPurchaseSortValue(b as PurchaseLike) - getPurchaseSortValue(a as PurchaseLike)
+      (a, b) =>
+        getPurchaseSortValue(b as PurchaseLike) -
+        getPurchaseSortValue(a as PurchaseLike)
     )
   }, [purchases])
 
@@ -423,62 +425,70 @@ export default function PurchaseHistoryPage() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-white/10 bg-slate-900/90 p-4 shadow-lg shadow-black/20">
-          <div className="mb-3">
-            <h2 className="text-sm font-semibold text-white">Filters</h2>
-            <p className="mt-1 text-xs text-slate-400">
-              Filter by purchase or dispensary.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                All Purchases
-              </label>
-              <select
-                value={selectedPurchaseFilter}
-                onChange={(e) => {
-                  setSelectedPurchaseFilter(e.target.value)
-                  setSelectedSavedId("")
-                  setSelectedOlderId("")
-                }}
-                className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
-              >
-                <option value="">All purchases</option>
-                {sortedPurchases.map((purchase) => (
-                  <option key={purchase.id} value={purchase.id}>
-                    {formatPurchaseLabel(purchase)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                Dispensary
-              </label>
-              <select
-                value={selectedDispensaryFilter}
-                onChange={(e) => {
-                  setSelectedDispensaryFilter(e.target.value)
-                  setSelectedSavedId("")
-                  setSelectedOlderId("")
-                }}
-                className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
-              >
-                <option value="">All dispensaries</option>
-                {uniqueDispensaries.map((dispensary) => (
-                  <option key={dispensary} value={dispensary}>
-                    {dispensary}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-
         <div className="space-y-3">
+          <CollapseHeader
+            title="Filters"
+            isOpen={openSection === "filters"}
+            onClick={() => toggleSection("filters")}
+          />
+
+          {openSection === "filters" && (
+            <div className="rounded-3xl border border-white/10 bg-slate-900/90 p-4 shadow-lg shadow-black/20">
+              <div className="mb-3">
+                <h2 className="text-sm font-semibold text-white">Filters</h2>
+                <p className="mt-1 text-xs text-slate-400">
+                  Filter by purchase or dispensary.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                    All Purchases
+                  </label>
+                  <select
+                    value={selectedPurchaseFilter}
+                    onChange={(e) => {
+                      setSelectedPurchaseFilter(e.target.value)
+                      setSelectedSavedId("")
+                      setSelectedOlderId("")
+                    }}
+                    className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                  >
+                    <option value="">All purchases</option>
+                    {sortedPurchases.map((purchase) => (
+                      <option key={purchase.id} value={purchase.id}>
+                        {formatPurchaseLabel(purchase)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                    Dispensary
+                  </label>
+                  <select
+                    value={selectedDispensaryFilter}
+                    onChange={(e) => {
+                      setSelectedDispensaryFilter(e.target.value)
+                      setSelectedSavedId("")
+                      setSelectedOlderId("")
+                    }}
+                    className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                  >
+                    <option value="">All dispensaries</option>
+                    {uniqueDispensaries.map((dispensary) => (
+                      <option key={dispensary} value={dispensary}>
+                        {dispensary}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
           <CollapseHeader
             title="Saved Purchases"
             isOpen={openSection === "saved"}

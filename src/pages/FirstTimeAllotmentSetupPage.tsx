@@ -346,6 +346,7 @@ export default function FirstTimeAllotmentSetupPage() {
     useState<FinalConfirmMode>(null)
   const [hasAcceptedFinalConfirm, setHasAcceptedFinalConfirm] = useState(false)
   const [savedPurchaseCount, setSavedPurchaseCount] = useState(0)
+  const [isCompletingSetup, setIsCompletingSetup] = useState(false)
 
   const purchaseTime = convertTo24HourTime(
     purchaseHour,
@@ -622,6 +623,7 @@ export default function FirstTimeAllotmentSetupPage() {
   }
 
   function closeFinalConfirmation() {
+    if (isCompletingSetup) return
     setShowFinalConfirm(false)
     setFinalConfirmMode(null)
     setHasAcceptedFinalConfirm(false)
@@ -646,13 +648,21 @@ export default function FirstTimeAllotmentSetupPage() {
     openFinalConfirmation("manual")
   }
 
-  function handleIntroAddPurchases() {
-    setSetupMode("purchases")
-    setIntroError("")
-    setShowIntroPopup(false)
+  async function handleIntroAddPurchases() {
+    try {
+      setIsCompletingSetup(true)
+      await setSetupMode("purchases")
+      setIntroError("")
+      setShowIntroPopup(false)
+    } catch (error) {
+      console.error("Failed to switch to purchase setup mode:", error)
+      setIntroError("Unable to continue right now. Please try again.")
+    } finally {
+      setIsCompletingSetup(false)
+    }
   }
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
 
     if (!purchaseDate) {
@@ -674,26 +684,35 @@ export default function FirstTimeAllotmentSetupPage() {
       return
     }
 
-    addPurchase({
-      id: crypto.randomUUID(),
-      purchaseDate,
-      purchaseTime,
-      purchaseDateTime: buildPurchaseDateTime(purchaseDate, purchaseTime),
-      dispensary,
-      notes,
-      source: receiptImage ? "scan" : "manual",
-      countsTowardAllotment: true,
-      entryMode: "setup",
-      items: items.map((item) => ({
-        id: item.id,
-        productName: item.productName,
-        category: item.category,
-        grams: Number(item.grams),
-      })),
-    })
+    try {
+      setIsCompletingSetup(true)
 
-    setSavedPurchaseCount((current) => current + 1)
-    resetForm()
+      await addPurchase({
+        id: crypto.randomUUID(),
+        purchaseDate,
+        purchaseTime,
+        purchaseDateTime: buildPurchaseDateTime(purchaseDate, purchaseTime),
+        dispensary,
+        notes,
+        source: receiptImage ? "scan" : "manual",
+        countsTowardAllotment: true,
+        entryMode: "setup",
+        items: items.map((item) => ({
+          id: item.id,
+          productName: item.productName,
+          category: item.category,
+          grams: Number(item.grams),
+        })),
+      })
+
+      setSavedPurchaseCount((current) => current + 1)
+      resetForm()
+    } catch (error) {
+      console.error("Failed to save setup purchase:", error)
+      alert("Unable to save this purchase right now.")
+    } finally {
+      setIsCompletingSetup(false)
+    }
   }
 
   function handleFinishInitialSetup() {
@@ -707,29 +726,38 @@ export default function FirstTimeAllotmentSetupPage() {
     openFinalConfirmation("purchases")
   }
 
-  function handleConfirmCompleteSetup() {
-    if (finalConfirmMode === "manual") {
-      const parsedValue = Number(currentAllotmentInput.trim())
+  async function handleConfirmCompleteSetup() {
+    try {
+      setIsCompletingSetup(true)
 
-      if (Number.isNaN(parsedValue) || parsedValue < 0) {
-        setIntroError("Please enter a valid allotment amount.")
+      if (finalConfirmMode === "manual") {
+        const parsedValue = Number(currentAllotmentInput.trim())
+
+        if (Number.isNaN(parsedValue) || parsedValue < 0) {
+          setIntroError("Please enter a valid allotment amount.")
+          closeFinalConfirmation()
+          return
+        }
+
+        await setManualStartingAllotment(parsedValue)
+        await completeInitialSetup()
+        setShowIntroPopup(false)
         closeFinalConfirmation()
+        navigate("/dashboard")
         return
       }
 
-      setManualStartingAllotment(parsedValue)
-      completeInitialSetup()
-      setShowIntroPopup(false)
-      closeFinalConfirmation()
-      navigate("/dashboard")
-      return
-    }
-
-    if (finalConfirmMode === "purchases") {
-      setSetupMode("purchases")
-      completeInitialSetup()
-      closeFinalConfirmation()
-      navigate("/dashboard")
+      if (finalConfirmMode === "purchases") {
+        await setSetupMode("purchases")
+        await completeInitialSetup()
+        closeFinalConfirmation()
+        navigate("/dashboard")
+      }
+    } catch (error) {
+      console.error("Failed to complete initial setup:", error)
+      alert("Unable to complete setup right now. Please try again.")
+    } finally {
+      setIsCompletingSetup(false)
     }
   }
 
@@ -773,7 +801,8 @@ export default function FirstTimeAllotmentSetupPage() {
                   if (introError) setIntroError("")
                 }}
                 placeholder="Enter current allotment"
-                className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
+                disabled={isCompletingSetup}
+                className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
               />
 
               {introError && (
@@ -785,7 +814,8 @@ export default function FirstTimeAllotmentSetupPage() {
               <button
                 type="button"
                 onClick={handleSaveIntroAllotment}
-                className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.97]"
+                disabled={isCompletingSetup}
+                className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Save & Continue
               </button>
@@ -793,9 +823,10 @@ export default function FirstTimeAllotmentSetupPage() {
               <button
                 type="button"
                 onClick={handleIntroAddPurchases}
-                className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 active:scale-[0.97]"
+                disabled={isCompletingSetup}
+                className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Add Purchases Instead
+                {isCompletingSetup ? "Saving..." : "Add Purchases Instead"}
               </button>
             </div>
           </div>
@@ -824,6 +855,7 @@ export default function FirstTimeAllotmentSetupPage() {
                 type="checkbox"
                 checked={hasAcceptedFinalConfirm}
                 onChange={(e) => setHasAcceptedFinalConfirm(e.target.checked)}
+                disabled={isCompletingSetup}
                 className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-800 text-emerald-500 focus:ring-emerald-500"
               />
               <span className="text-sm leading-5 text-slate-300">
@@ -836,18 +868,19 @@ export default function FirstTimeAllotmentSetupPage() {
               <button
                 type="button"
                 onClick={closeFinalConfirmation}
-                className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 active:scale-[0.97]"
+                disabled={isCompletingSetup}
+                className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Verify Information
               </button>
 
               <button
                 type="button"
-                disabled={!hasAcceptedFinalConfirm}
+                disabled={!hasAcceptedFinalConfirm || isCompletingSetup}
                 onClick={handleConfirmCompleteSetup}
                 className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Complete Setup
+                {isCompletingSetup ? "Completing..." : "Complete Setup"}
               </button>
             </div>
           </div>
@@ -893,19 +926,21 @@ export default function FirstTimeAllotmentSetupPage() {
                   <button
                     type="button"
                     onClick={startCamera}
-                    className="flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
+                    disabled={isCompletingSetup}
+                    className="flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <span aria-hidden="true">📷</span>
                     <span>Camera</span>
                   </button>
 
-                  <label className="flex h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 text-sm font-semibold text-white transition hover:bg-white/10">
+                  <label className="flex h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60">
                     <span aria-hidden="true">📁</span>
                     <span>Upload</span>
                     <input
                       type="file"
                       accept="image/*"
                       onChange={handleImageUpload}
+                      disabled={isCompletingSetup}
                       className="hidden"
                     />
                   </label>
@@ -933,7 +968,8 @@ export default function FirstTimeAllotmentSetupPage() {
                       <button
                         type="button"
                         onClick={capturePhoto}
-                        className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
+                        disabled={isCompletingSetup}
+                        className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Capture
                       </button>
@@ -941,7 +977,8 @@ export default function FirstTimeAllotmentSetupPage() {
                       <button
                         type="button"
                         onClick={stopCamera}
-                        className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                        disabled={isCompletingSetup}
+                        className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Cancel
                       </button>
@@ -961,7 +998,7 @@ export default function FirstTimeAllotmentSetupPage() {
                       <button
                         type="button"
                         onClick={handleScanReceipt}
-                        disabled={isScanning}
+                        disabled={isScanning || isCompletingSetup}
                         className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {isScanning ? "Scanning..." : "Scan Receipt"}
@@ -970,7 +1007,8 @@ export default function FirstTimeAllotmentSetupPage() {
                       <button
                         type="button"
                         onClick={clearImage}
-                        className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                        disabled={isCompletingSetup}
+                        className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Remove Image
                       </button>
@@ -1005,7 +1043,8 @@ export default function FirstTimeAllotmentSetupPage() {
                         type="date"
                         value={purchaseDate}
                         onChange={(e) => setPurchaseDate(e.target.value)}
-                        className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                        disabled={isCompletingSetup}
+                        className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                       />
                     </div>
 
@@ -1018,7 +1057,8 @@ export default function FirstTimeAllotmentSetupPage() {
                         <select
                           value={purchaseHour}
                           onChange={(e) => setPurchaseHour(e.target.value)}
-                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                          disabled={isCompletingSetup}
+                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <option value="">Hour</option>
                           {Array.from({ length: 12 }, (_, i) => (
@@ -1031,7 +1071,8 @@ export default function FirstTimeAllotmentSetupPage() {
                         <select
                           value={purchaseMinute}
                           onChange={(e) => setPurchaseMinute(e.target.value)}
-                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                          disabled={isCompletingSetup}
+                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <option value="">Min</option>
                           {Array.from({ length: 60 }, (_, i) => {
@@ -1047,7 +1088,8 @@ export default function FirstTimeAllotmentSetupPage() {
                         <select
                           value={purchasePeriod}
                           onChange={(e) => setPurchasePeriod(e.target.value)}
-                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                          disabled={isCompletingSetup}
+                          className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <option value="AM">AM</option>
                           <option value="PM">PM</option>
@@ -1067,7 +1109,8 @@ export default function FirstTimeAllotmentSetupPage() {
                         onChange={(e) =>
                           handleFavoriteDispensaryChange(e.target.value)
                         }
-                        className="mb-2 w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                        disabled={isCompletingSetup}
+                        className="mb-2 w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <option value="">Choose favorite dispensary</option>
                         {favoriteDispensaries.map((favorite) => (
@@ -1082,7 +1125,8 @@ export default function FirstTimeAllotmentSetupPage() {
                       placeholder="Optional dispensary name"
                       value={dispensary}
                       onChange={(e) => setDispensary(e.target.value)}
-                      className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
+                      disabled={isCompletingSetup}
+                      className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                     />
                   </div>
 
@@ -1095,7 +1139,8 @@ export default function FirstTimeAllotmentSetupPage() {
                       placeholder="Optional notes for the whole purchase"
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
-                      className="w-full resize-none overflow-hidden rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
+                      disabled={isCompletingSetup}
+                      className="w-full resize-none overflow-hidden rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                       rows={1}
                     />
                   </div>
@@ -1122,7 +1167,8 @@ export default function FirstTimeAllotmentSetupPage() {
                         <button
                           type="button"
                           onClick={() => toggleExpanded(item.id)}
-                          className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+                          disabled={isCompletingSetup}
+                          className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <div className="min-w-0">
                             <p className="text-sm font-semibold text-white">
@@ -1145,7 +1191,8 @@ export default function FirstTimeAllotmentSetupPage() {
                                 <button
                                   type="button"
                                   onClick={() => removeItem(item.id)}
-                                  className="rounded-xl border border-red-500/20 bg-red-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-red-300 transition hover:bg-red-500/15"
+                                  disabled={isCompletingSetup}
+                                  className="rounded-xl border border-red-500/20 bg-red-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-red-300 transition hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                   Remove
                                 </button>
@@ -1163,7 +1210,8 @@ export default function FirstTimeAllotmentSetupPage() {
                                     onChange={(e) =>
                                       applyFavoritePurchase(item.id, e.target.value)
                                     }
-                                    className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                                    disabled={isCompletingSetup}
+                                    className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                                   >
                                     <option value="">Choose favorite purchase</option>
                                     {favoritePurchases.map((favorite) => (
@@ -1186,7 +1234,8 @@ export default function FirstTimeAllotmentSetupPage() {
                                   onChange={(e) =>
                                     updateItem(item.id, "productName", e.target.value)
                                   }
-                                  className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
+                                  disabled={isCompletingSetup}
+                                  className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 />
                               </div>
 
@@ -1200,7 +1249,8 @@ export default function FirstTimeAllotmentSetupPage() {
                                     onChange={(e) =>
                                       updateItem(item.id, "category", e.target.value)
                                     }
-                                    className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
+                                    disabled={isCompletingSetup}
+                                    className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                                   >
                                     <option value="">Select category</option>
                                     <option value="flower">Flower</option>
@@ -1223,7 +1273,8 @@ export default function FirstTimeAllotmentSetupPage() {
                                     onChange={(e) =>
                                       updateItem(item.id, "grams", e.target.value)
                                     }
-                                    className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
+                                    disabled={isCompletingSetup}
+                                    className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                                   />
                                 </div>
                               </div>
@@ -1237,7 +1288,8 @@ export default function FirstTimeAllotmentSetupPage() {
                   <button
                     type="button"
                     onClick={addAnotherItem}
-                    className="w-full rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-3 text-sm font-semibold text-emerald-400 transition hover:bg-emerald-500/15"
+                    disabled={isCompletingSetup}
+                    className="w-full rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-3 text-sm font-semibold text-emerald-400 transition hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     + Add Item
                   </button>
@@ -1249,17 +1301,19 @@ export default function FirstTimeAllotmentSetupPage() {
               <div className="space-y-3">
                 <button
                   type="submit"
-                  className="w-full rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
+                  disabled={isCompletingSetup}
+                  className="w-full rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Save Active Purchase
+                  {isCompletingSetup ? "Saving..." : "Save Active Purchase"}
                 </button>
 
                 <button
                   type="button"
                   onClick={handleFinishInitialSetup}
-                  className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800 active:scale-[0.98]"
+                  disabled={isCompletingSetup}
+                  className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Complete Setup
+                  {isCompletingSetup ? "Saving..." : "Complete Setup"}
                 </button>
               </div>
             </form>

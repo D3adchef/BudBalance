@@ -9,6 +9,13 @@ type CalendarEvent = {
   grams: number
 }
 
+type UpcomingReturnEvent = {
+  id: string
+  date: Date
+  dateKey: string
+  grams: number
+}
+
 function roundToTwo(num: number) {
   return Math.round(num * 100) / 100
 }
@@ -32,6 +39,10 @@ function createLocalDate(dateString: string) {
   return new Date(`${dateString}T00:00:00`)
 }
 
+function createLocalDateTime(dateString: string, timeString?: string) {
+  return new Date(`${dateString}T${timeString || "12:00"}:00`)
+}
+
 function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate()
 }
@@ -40,10 +51,31 @@ function getFirstDayOfMonth(year: number, month: number) {
   return new Date(year, month, 1).getDay()
 }
 
+function formatReturnDate(date: Date) {
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
+}
+
+function formatReturnTime(date: Date) {
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  })
+}
+
 export default function DashboardPage() {
   const purchases = usePurchaseStore((state) => state.purchases)
   const settings = useSettingsStore((state) => state.settings)
   const allotment = useAllotmentStore((state) => state.allotment)
+
+  const [activeBubble, setActiveBubble] = useState<{
+    dateKey: string
+    type: "return" | "purchase"
+  } | null>(null)
+  const [isUpcomingReturnsOpen, setIsUpcomingReturnsOpen] = useState(false)
 
   const allotmentLimit = settings.allotmentLimit
 
@@ -52,12 +84,16 @@ export default function DashboardPage() {
   }, [purchases])
 
   const usedGramsFromPurchases = useMemo(() => {
-    const today = new Date()
+    const now = new Date()
 
     return roundToTwo(
       purchasesThatCount.reduce((total, purchase) => {
-        const purchaseDate = createLocalDate(purchase.purchaseDate)
-        const ageInMs = today.getTime() - purchaseDate.getTime()
+        const purchaseDateTime = createLocalDateTime(
+          purchase.purchaseDate,
+          purchase.purchaseTime
+        )
+
+        const ageInMs = now.getTime() - purchaseDateTime.getTime()
         const ageInDays = Math.floor(ageInMs / (1000 * 60 * 60 * 24))
 
         if (ageInDays >= 0 && ageInDays < 30) {
@@ -123,7 +159,10 @@ export default function DashboardPage() {
         grams: totalGrams,
       })
 
-      const rollOffDate = new Date(purchaseDate)
+      const rollOffDate = createLocalDateTime(
+        purchase.purchaseDate,
+        purchase.purchaseTime
+      )
       rollOffDate.setDate(rollOffDate.getDate() + 30)
       const rollOffKey = formatDateKey(rollOffDate)
 
@@ -137,10 +176,28 @@ export default function DashboardPage() {
     return eventMap
   }, [purchasesThatCount])
 
-  const [activeBubble, setActiveBubble] = useState<{
-    dateKey: string
-    type: "return" | "purchase"
-  } | null>(null)
+  const upcomingReturns = useMemo<UpcomingReturnEvent[]>(() => {
+    const now = new Date()
+
+    return purchasesThatCount
+      .map((purchase) => {
+        const returnDate = createLocalDateTime(
+          purchase.purchaseDate,
+          purchase.purchaseTime
+        )
+        returnDate.setDate(returnDate.getDate() + 30)
+
+        return {
+          id: purchase.id,
+          date: returnDate,
+          dateKey: formatDateKey(returnDate),
+          grams: getPurchaseTotalGrams(purchase.items || []),
+        }
+      })
+      .filter((event) => event.date.getTime() > now.getTime())
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+      .slice(0, 3)
+  }, [purchasesThatCount])
 
   const calendarCells = []
 
@@ -329,6 +386,77 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid grid-cols-7 gap-1">{calendarCells}</div>
+        </section>
+
+        <section className="rounded-3xl border border-white/10 bg-slate-900/90 p-3 shadow-lg shadow-black/20">
+          <button
+            type="button"
+            onClick={() => setIsUpcomingReturnsOpen((current) => !current)}
+            className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3 text-left transition hover:border-emerald-500/30"
+          >
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-400">
+                Returning Allotment
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                Next 3 allotment returns
+              </p>
+            </div>
+
+            <span className="text-lg font-semibold text-emerald-400">
+              {isUpcomingReturnsOpen ? "−" : "+"}
+            </span>
+          </button>
+
+          {isUpcomingReturnsOpen && (
+            <div className="mt-3">
+              {upcomingReturns.length > 0 ? (
+                <div className="space-y-2">
+                  {upcomingReturns.map((event) => (
+                    <div
+                      key={event.id}
+                      className="rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-3"
+                    >
+                      <div className="grid grid-cols-3 gap-2 text-sm">
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-slate-400">
+                            Date
+                          </p>
+                          <p className="mt-1 font-medium text-white">
+                            {formatReturnDate(event.date)}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-slate-400">
+                            Time
+                          </p>
+                          <p className="mt-1 font-medium text-white">
+                            {formatReturnTime(event.date)}
+                          </p>
+                        </div>
+
+                        <div className="text-right">
+                          <p className="text-[10px] uppercase tracking-wide text-slate-400">
+                            Returning
+                          </p>
+                          <p className="mt-1 font-semibold text-emerald-400">
+                            +{event.grams}g
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-3">
+                  <p className="text-sm text-slate-400">
+                    No upcoming allotment returns found.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </section>
       </div>
     </>
