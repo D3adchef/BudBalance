@@ -75,6 +75,7 @@ export default function DashboardPage() {
     dateKey: string
     type: "return" | "purchase"
   } | null>(null)
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false)
   const [isUpcomingReturnsOpen, setIsUpcomingReturnsOpen] = useState(false)
 
   const allotmentLimit = settings.allotmentLimit
@@ -376,16 +377,28 @@ export default function DashboardPage() {
         </section>
 
         <section className="rounded-3xl border border-white/10 bg-slate-900/90 p-3 shadow-lg shadow-black/20">
-          <div className="mb-2">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-400">
-              Calendar View
-            </p>
-            <h3 className="mt-1 text-base font-semibold text-white">
-              {getMonthName(today)}
-            </h3>
-          </div>
+          <button
+            type="button"
+            onClick={() => setIsCalendarOpen((current) => !current)}
+            className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3 text-left transition hover:border-emerald-500/30"
+          >
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-400">
+                Calendar View
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                {getMonthName(today)}
+              </p>
+            </div>
 
-          <div className="grid grid-cols-7 gap-1">{calendarCells}</div>
+            <span className="text-lg font-semibold text-emerald-400">
+              {isCalendarOpen ? "−" : "+"}
+            </span>
+          </button>
+
+          {isCalendarOpen && (
+            <div className="mt-3 grid grid-cols-7 gap-1">{calendarCells}</div>
+          )}
         </section>
 
         <section className="rounded-3xl border border-white/10 bg-slate-900/90 p-3 shadow-lg shadow-black/20">

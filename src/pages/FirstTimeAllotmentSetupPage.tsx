@@ -5,291 +5,23 @@ import Tesseract from "tesseract.js"
 import { usePurchaseStore } from "../features/purchases/purchaseStore"
 import { useFavoritesStore } from "../features/favorites/favoritesStore"
 import { useAllotmentStore } from "../features/allotment/allotmentStore"
-
-type DraftItem = {
-  id: string
-  productName: string
-  category: string
-  grams: string
-}
-
-type ParsedReceipt = {
-  dispensary: string
-  purchaseDate: string
-  purchaseTime: string
-  items: DraftItem[]
-  rawText: string
-}
+import {
+  type DraftItem,
+  type ScanValidationResult,
+  createEmptyItem,
+  getTimePartsFrom24Hour,
+  convertTo24HourTime,
+  buildPurchaseDateTime,
+  parseReceiptText,
+  validateParsedReceipt,
+  getValidationCardClasses,
+  getValidationTitle,
+  getValidationDescription,
+} from "../utils/receiptParsing"
+import { buildProcessedImageFromCanvas } from "../utils/receiptImageProcessing"
+import { getItemSummary } from "../utils/purchaseItemHelpers"
 
 type FinalConfirmMode = "manual" | "purchases" | null
-
-function createEmptyItem(): DraftItem {
-  return {
-    id: crypto.randomUUID(),
-    productName: "",
-    category: "",
-    grams: "",
-  }
-}
-
-function getItemSummary(item: DraftItem) {
-  const parts = []
-
-  if (item.productName.trim()) parts.push(item.productName.trim())
-  if (item.category.trim()) parts.push(item.category.trim())
-  if (item.grams.trim()) parts.push(`${item.grams}g`)
-
-  return parts.length > 0 ? parts.join(" • ") : "Tap to add details"
-}
-
-function normalizeDateForInput(value: string) {
-  const slashMatch = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/)
-  if (slashMatch) {
-    const month = slashMatch[1].padStart(2, "0")
-    const day = slashMatch[2].padStart(2, "0")
-    const year =
-      slashMatch[3].length === 2 ? `20${slashMatch[3]}` : slashMatch[3]
-    return `${year}-${month}-${day}`
-  }
-
-  const dashMatch = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
-  if (dashMatch) {
-    const year = dashMatch[1]
-    const month = dashMatch[2].padStart(2, "0")
-    const day = dashMatch[3].padStart(2, "0")
-    return `${year}-${month}-${day}`
-  }
-
-  return ""
-}
-
-function normalizeTimeForInput(value: string) {
-  const trimmed = value.trim().toLowerCase()
-
-  const amPmMatch = trimmed.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i)
-  if (amPmMatch) {
-    let hour = Number(amPmMatch[1])
-    const minute = amPmMatch[2]
-    const meridiem = amPmMatch[3].toLowerCase()
-
-    if (meridiem === "pm" && hour !== 12) hour += 12
-    if (meridiem === "am" && hour === 12) hour = 0
-
-    return `${String(hour).padStart(2, "0")}:${minute}`
-  }
-
-  const twentyFourHourMatch = trimmed.match(/^(\d{1,2}):(\d{2})$/)
-  if (twentyFourHourMatch) {
-    const hour = Number(twentyFourHourMatch[1])
-    const minute = Number(twentyFourHourMatch[2])
-
-    if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
-      return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
-    }
-  }
-
-  return ""
-}
-
-function convertTo24HourTime(
-  hour: string,
-  minute: string,
-  period: string
-) {
-  if (!hour || !minute || !period) return ""
-
-  let numericHour = Number(hour)
-
-  if (Number.isNaN(numericHour)) return ""
-
-  if (period === "AM") {
-    if (numericHour === 12) numericHour = 0
-  } else {
-    if (numericHour !== 12) numericHour += 12
-  }
-
-  return `${String(numericHour).padStart(2, "0")}:${minute}`
-}
-
-function getTimePartsFrom24Hour(value: string) {
-  if (!value) {
-    return {
-      hour: "",
-      minute: "",
-      period: "AM",
-    }
-  }
-
-  const [rawHour = "", rawMinute = "00"] = value.split(":")
-  const hourNumber = Number(rawHour)
-
-  if (Number.isNaN(hourNumber)) {
-    return {
-      hour: "",
-      minute: "",
-      period: "AM",
-    }
-  }
-
-  const period = hourNumber >= 12 ? "PM" : "AM"
-  const displayHour = hourNumber % 12 === 0 ? 12 : hourNumber % 12
-
-  return {
-    hour: String(displayHour),
-    minute: String(rawMinute).padStart(2, "0"),
-    period,
-  }
-}
-
-function buildPurchaseDateTime(purchaseDate: string, purchaseTime: string) {
-  return `${purchaseDate}T${purchaseTime}`
-}
-
-function guessCategory(productName: string) {
-  const name = productName.toLowerCase()
-
-  if (
-    name.includes("pre-roll") ||
-    name.includes("preroll") ||
-    name.includes("joint")
-  ) {
-    return "pre-roll"
-  }
-
-  if (
-    name.includes("gummy") ||
-    name.includes("edible") ||
-    name.includes("chocolate") ||
-    name.includes("chew")
-  ) {
-    return "edible"
-  }
-
-  if (
-    name.includes("vape") ||
-    name.includes("cart") ||
-    name.includes("cartridge")
-  ) {
-    return "vape"
-  }
-
-  if (
-    name.includes("wax") ||
-    name.includes("shatter") ||
-    name.includes("badder") ||
-    name.includes("live resin") ||
-    name.includes("concentrate")
-  ) {
-    return "concentrate"
-  }
-
-  return "flower"
-}
-
-function parseReceiptText(rawText: string): ParsedReceipt {
-  const rawLines = rawText
-    .split("\n")
-    .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-
-  const lines = rawLines.filter((line) => line.length >= 2)
-
-  const datePattern =
-    /\b(\d{1,2}\/\d{1,2}\/\d{2,4}|\d{4}-\d{1,2}-\d{1,2})\b/
-  const foundDate =
-    lines.find((line) => datePattern.test(line))?.match(datePattern)?.[0] || ""
-
-  const timePattern = /\b(\d{1,2}:\d{2}\s?(?:AM|PM|am|pm)|\d{1,2}:\d{2})\b/
-  const foundTime =
-    lines.find((line) => timePattern.test(line))?.match(timePattern)?.[0] || ""
-
-  const normalizedDate = normalizeDateForInput(foundDate)
-  const normalizedTime = normalizeTimeForInput(foundTime)
-
-  const dispensaryBlacklist = [
-    "subtotal",
-    "total",
-    "tax",
-    "change",
-    "cash",
-    "visa",
-    "mastercard",
-    "debit",
-    "receipt",
-    "transaction",
-    "invoice",
-    "discount",
-    "balance",
-    "items",
-    "thank you",
-    "www",
-    "phone",
-    "date",
-    "time",
-  ]
-
-  const dispensary =
-    lines.find((line) => {
-      const lower = line.toLowerCase()
-
-      if (lower.length < 3) return false
-      if (datePattern.test(lower)) return false
-      if (timePattern.test(lower)) return false
-      if (/\d{3}[-.)\s]\d{3}[-.\s]\d{4}/.test(lower)) return false
-      if (dispensaryBlacklist.some((term) => lower.includes(term))) return false
-
-      return /[a-z]/i.test(lower)
-    }) || ""
-
-  const itemCandidates = lines.filter((line) => {
-    const lower = line.toLowerCase()
-
-    if (!/\b\d+(\.\d+)?\s?g\b/i.test(line)) return false
-    if (
-      lower.includes("subtotal") ||
-      lower.includes("total") ||
-      lower.includes("tax") ||
-      lower.includes("discount") ||
-      lower.includes("change") ||
-      lower.includes("balance")
-    ) {
-      return false
-    }
-
-    return true
-  })
-
-  const parsedItems: DraftItem[] = itemCandidates.map((line) => {
-    const gramsMatch = line.match(/(\d+(\.\d+)?)\s?g\b/i)
-    const grams = gramsMatch?.[1] || ""
-
-    let productName = line
-    if (gramsMatch?.[0]) {
-      productName = productName.replace(gramsMatch[0], "")
-    }
-
-    productName = productName
-      .replace(/\$?\d+(\.\d{2})?/g, "")
-      .replace(/\s{2,}/g, " ")
-      .replace(/[-•|]+/g, " ")
-      .trim()
-
-    return {
-      id: crypto.randomUUID(),
-      productName: productName || "Scanned Item",
-      category: guessCategory(productName || line),
-      grams,
-    }
-  })
-
-  return {
-    dispensary,
-    purchaseDate: normalizedDate,
-    purchaseTime: normalizedTime,
-    items: parsedItems.length > 0 ? parsedItems : [createEmptyItem()],
-    rawText,
-  }
-}
 
 export default function FirstTimeAllotmentSetupPage() {
   const addPurchase = usePurchaseStore((state) => state.addPurchase)
@@ -331,11 +63,14 @@ export default function FirstTimeAllotmentSetupPage() {
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
 
   const [receiptImage, setReceiptImage] = useState<string | null>(null)
+  const [ocrImage, setOcrImage] = useState<string | null>(null)
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraError, setCameraError] = useState("")
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [isScanning, setIsScanning] = useState(false)
   const [scanStatus, setScanStatus] = useState("")
+  const [scanValidation, setScanValidation] =
+    useState<ScanValidationResult | null>(null)
 
   const [showIntroPopup, setShowIntroPopup] = useState(true)
   const [currentAllotmentInput, setCurrentAllotmentInput] = useState("")
@@ -392,12 +127,25 @@ export default function FirstTimeAllotmentSetupPage() {
     )}px`
   }, [notes])
 
+  useEffect(() => {
+    if (!cameraActive) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [cameraActive])
+
   async function startCamera() {
     try {
       stopCamera()
       setCameraError("")
       setReceiptImage(null)
+      setOcrImage(null)
       setScanStatus("")
+      setScanValidation(null)
 
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -454,33 +202,71 @@ export default function FirstTimeAllotmentSetupPage() {
 
     context.drawImage(video, 0, 0, canvas.width, canvas.height)
 
-    const imageDataUrl = canvas.toDataURL("image/png")
-    setReceiptImage(imageDataUrl)
+    const rawImageDataUrl = canvas.toDataURL("image/png")
+    const processedImageDataUrl = buildProcessedImageFromCanvas(canvas)
+
+    setReceiptImage(rawImageDataUrl)
+    setOcrImage(processedImageDataUrl)
     setCameraError("")
     setScanStatus("Receipt image ready to scan.")
+    setScanValidation(null)
     stopCamera()
   }
 
   function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
-    if (!file) return
+    if (!file || !canvasRef.current) return
 
     const reader = new FileReader()
 
     reader.onloadend = () => {
-      setReceiptImage(reader.result as string)
-      setCameraError("")
-      setScanStatus("Receipt image ready to scan.")
-      stopCamera()
+      const imageSource = reader.result as string
+      const image = new Image()
+
+      image.onload = () => {
+        const canvas = canvasRef.current
+        if (!canvas) return
+
+        const context = canvas.getContext("2d")
+        if (!context) return
+
+        canvas.width = image.width
+        canvas.height = image.height
+
+        context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+        const rawImage = canvas.toDataURL("image/png")
+        const processedImage = buildProcessedImageFromCanvas(canvas)
+
+        setReceiptImage(rawImage)
+        setOcrImage(processedImage)
+        setCameraError("")
+        setScanStatus("Receipt image ready to scan.")
+        setScanValidation(null)
+        stopCamera()
+      }
+
+      image.onerror = () => {
+        setCameraError("Unable to load that image. Please try another file.")
+      }
+
+      image.src = imageSource
+    }
+
+    reader.onerror = () => {
+      setCameraError("Unable to read that file. Please try again.")
     }
 
     reader.readAsDataURL(file)
+    event.target.value = ""
   }
 
   function clearImage() {
     setReceiptImage(null)
+    setOcrImage(null)
     setCameraError("")
     setScanStatus("")
+    setScanValidation(null)
   }
 
   function updateItem(
@@ -525,9 +311,27 @@ export default function FirstTimeAllotmentSetupPage() {
     try {
       setIsScanning(true)
       setScanStatus("Reading receipt...")
+      setScanValidation(null)
 
-      const result = await Tesseract.recognize(receiptImage, "eng")
+      const imageToScan = ocrImage || receiptImage
+
+      const result = await Tesseract.recognize(imageToScan, "eng", {
+        logger: (message) => {
+          if (
+            message.status === "recognizing text" &&
+            typeof message.progress === "number"
+          ) {
+            setScanStatus(
+              `Reading receipt... ${Math.round(message.progress * 100)}%`
+            )
+          }
+        },
+      })
+
       const parsed = parseReceiptText(result.data.text)
+      const validation = validateParsedReceipt(parsed)
+
+      setScanValidation(validation)
 
       if (parsed.dispensary) {
         setDispensary(parsed.dispensary)
@@ -559,10 +363,30 @@ export default function FirstTimeAllotmentSetupPage() {
         return "Scanned from receipt image."
       })
 
-      setScanStatus("Receipt scanned. Please review the details before saving.")
+      if (validation.confidence === "high") {
+        setScanStatus("Receipt scanned. Please review the details before saving.")
+      } else if (validation.confidence === "medium") {
+        setScanStatus(
+          "Receipt partially scanned. Review flagged fields before saving."
+        )
+      } else {
+        setScanStatus("Low-confidence scan. Please review all details carefully.")
+      }
     } catch (error) {
       console.error("Receipt scan error:", error)
       setScanStatus("Unable to scan this receipt. Please enter details manually.")
+      setScanValidation({
+        confidence: "low",
+        warnings: ["OCR could not confidently read this image."],
+        missingFields: ["Dispensary", "Purchase Date", "Purchase Time", "Items"],
+        detectedFields: {
+          dispensary: false,
+          purchaseDate: false,
+          purchaseTime: false,
+          items: false,
+        },
+        points: 0,
+      })
     } finally {
       setIsScanning(false)
     }
@@ -611,8 +435,10 @@ export default function FirstTimeAllotmentSetupPage() {
     setItems([createEmptyItem()])
     setExpandedItemId(null)
     setReceiptImage(null)
+    setOcrImage(null)
     setCameraError("")
     setScanStatus("")
+    setScanValidation(null)
     stopCamera()
   }
 
@@ -887,6 +713,88 @@ export default function FirstTimeAllotmentSetupPage() {
         </div>
       )}
 
+      {cameraActive && (
+        <div className="fixed inset-0 z-[90] bg-black">
+          <div className="flex h-full flex-col">
+            <div className="flex items-center justify-between border-b border-white/10 bg-slate-950/95 px-4 py-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
+                  Smart Scan
+                </p>
+                <h3 className="mt-1 text-sm font-semibold text-white">
+                  Capture Receipt
+                </h3>
+              </div>
+
+              <button
+                type="button"
+                onClick={stopCamera}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/10"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="relative flex-1 overflow-hidden bg-black">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="h-full w-full object-cover"
+              />
+
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6">
+                <div className="w-full max-w-md rounded-[2rem] border-2 border-emerald-400/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]">
+                  <div className="aspect-[3/4] w-full" />
+                </div>
+              </div>
+
+              <div className="pointer-events-none absolute inset-x-0 top-4 px-4">
+                <div className="mx-auto max-w-md rounded-2xl bg-slate-950/75 px-4 py-3 text-center backdrop-blur">
+                  <p className="text-sm font-semibold text-white">
+                    Center the receipt in the frame
+                  </p>
+                  <p className="mt-1 text-xs text-slate-300">
+                    Try to keep the whole receipt visible and reduce glare.
+                  </p>
+                </div>
+              </div>
+
+              <div className="absolute inset-x-0 bottom-0 border-t border-white/10 bg-slate-950/90 px-4 pb-6 pt-4 backdrop-blur">
+                <div className="mx-auto max-w-md space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={capturePhoto}
+                      disabled={isCompletingSetup}
+                      className="rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Capture
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={stopCamera}
+                      disabled={isCompletingSetup}
+                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+
+                  {cameraError && (
+                    <p className="rounded-2xl border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-red-300">
+                      {cameraError}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="min-h-screen bg-black px-4 py-6 text-white">
         <div className="mx-auto w-full max-w-md space-y-4">
           <div className="rounded-3xl border border-white/10 bg-slate-950/95 p-6 shadow-[0_0_40px_rgba(0,0,0,0.55)]">
@@ -946,44 +854,10 @@ export default function FirstTimeAllotmentSetupPage() {
                   </label>
                 </div>
 
-                {cameraError && (
+                {cameraError && !cameraActive && (
                   <p className="mt-3 rounded-2xl border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-300">
                     {cameraError}
                   </p>
-                )}
-
-                {cameraActive && (
-                  <div className="mt-3 space-y-3 rounded-2xl border border-white/10 bg-slate-950 p-3">
-                    <div className="overflow-hidden rounded-2xl border border-white/10 bg-black">
-                      <video
-                        ref={videoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        className="block max-h-[300px] w-full object-cover"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <button
-                        type="button"
-                        onClick={capturePhoto}
-                        disabled={isCompletingSetup}
-                        className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Capture
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={stopCamera}
-                        disabled={isCompletingSetup}
-                        className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
                 )}
 
                 {receiptImage && (
@@ -1018,6 +892,106 @@ export default function FirstTimeAllotmentSetupPage() {
                       <p className="rounded-2xl border border-white/10 bg-slate-900/70 px-3 py-2 text-sm text-slate-300">
                         {scanStatus}
                       </p>
+                    )}
+
+                    {scanValidation && (
+                      <div
+                        className={`rounded-2xl border px-3 py-3 ${getValidationCardClasses(
+                          scanValidation.confidence
+                        )}`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold">
+                              {getValidationTitle(scanValidation.confidence)}
+                            </p>
+                            <p className="mt-1 text-xs opacity-90">
+                              {getValidationDescription(scanValidation)}
+                            </p>
+                          </div>
+
+                          <div className="shrink-0 rounded-xl border border-white/10 bg-black/10 px-2.5 py-2 text-right">
+                            <p className="text-[10px] uppercase tracking-wide opacity-75">
+                              Score
+                            </p>
+                            <p className="mt-1 text-sm font-semibold">
+                              {scanValidation.points ?? 0}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                          <div className="rounded-xl border border-white/10 bg-black/10 px-2 py-2">
+                            <p className="text-[10px] uppercase tracking-wide opacity-75">
+                              Dispensary
+                            </p>
+                            <p className="mt-1 font-semibold">
+                              {scanValidation.detectedFields.dispensary
+                                ? "Found"
+                                : "Missing"}
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl border border-white/10 bg-black/10 px-2 py-2">
+                            <p className="text-[10px] uppercase tracking-wide opacity-75">
+                              Date
+                            </p>
+                            <p className="mt-1 font-semibold">
+                              {scanValidation.detectedFields.purchaseDate
+                                ? "Found"
+                                : "Missing"}
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl border border-white/10 bg-black/10 px-2 py-2">
+                            <p className="text-[10px] uppercase tracking-wide opacity-75">
+                              Time
+                            </p>
+                            <p className="mt-1 font-semibold">
+                              {scanValidation.detectedFields.purchaseTime
+                                ? "Found"
+                                : "Missing"}
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl border border-white/10 bg-black/10 px-2 py-2">
+                            <p className="text-[10px] uppercase tracking-wide opacity-75">
+                              Items
+                            </p>
+                            <p className="mt-1 font-semibold">
+                              {scanValidation.detectedFields.items
+                                ? "Found"
+                                : "Missing"}
+                            </p>
+                          </div>
+                        </div>
+
+                        {scanValidation.missingFields.length > 0 && (
+                          <div className="mt-3">
+                            <p className="text-[10px] uppercase tracking-wide opacity-75">
+                              Missing Fields
+                            </p>
+                            <ul className="mt-1 space-y-1 text-xs">
+                              {scanValidation.missingFields.map((field: string) => (
+                                <li key={field}>• {field}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {scanValidation.warnings.length > 0 && (
+                          <div className="mt-3">
+                            <p className="text-[10px] uppercase tracking-wide opacity-75">
+                              Warnings
+                            </p>
+                            <ul className="mt-1 space-y-1 text-xs">
+                              {scanValidation.warnings.map((warning: string) => (
+                                <li key={warning}>• {warning}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}

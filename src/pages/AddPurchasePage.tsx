@@ -124,6 +124,17 @@ export default function AddPurchasePage() {
     return () => window.clearTimeout(timeout)
   }, [saveMessage])
 
+  useEffect(() => {
+    if (!cameraActive) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [cameraActive])
+
   function togglePurchaseDetails() {
     setIsPurchaseDetailsOpen((current) => !current)
   }
@@ -387,6 +398,7 @@ export default function AddPurchasePage() {
           purchaseTime: false,
           items: false,
         },
+        points: 0,
       })
       openPurchaseDetails()
     } finally {
@@ -533,6 +545,86 @@ export default function AddPurchasePage() {
         description="Use this page to manually enter a purchase or scan a receipt to speed things up. Add each item from the purchase so BudBalance can track your active grams correctly."
       />
 
+      {cameraActive && (
+        <div className="fixed inset-0 z-[90] bg-black">
+          <div className="flex h-full flex-col">
+            <div className="flex items-center justify-between border-b border-white/10 bg-slate-950/95 px-4 py-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
+                  Smart Scan
+                </p>
+                <h3 className="mt-1 text-sm font-semibold text-white">
+                  Capture Receipt
+                </h3>
+              </div>
+
+              <button
+                type="button"
+                onClick={stopCamera}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/10"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="relative flex-1 overflow-hidden bg-black">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="h-full w-full object-cover"
+              />
+
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6">
+                <div className="w-full max-w-md rounded-[2rem] border-2 border-emerald-400/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]">
+                  <div className="aspect-[3/4] w-full" />
+                </div>
+              </div>
+
+              <div className="pointer-events-none absolute inset-x-0 top-4 px-4">
+                <div className="mx-auto max-w-md rounded-2xl bg-slate-950/75 px-4 py-3 text-center backdrop-blur">
+                  <p className="text-sm font-semibold text-white">
+                    Center the receipt in the frame
+                  </p>
+                  <p className="mt-1 text-xs text-slate-300">
+                    Try to keep the whole receipt visible and reduce glare.
+                  </p>
+                </div>
+              </div>
+
+              <div className="absolute inset-x-0 bottom-0 border-t border-white/10 bg-slate-950/90 px-4 pb-6 pt-4 backdrop-blur">
+                <div className="mx-auto max-w-md space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={capturePhoto}
+                      className="rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
+                    >
+                      Capture
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={stopCamera}
+                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-white/10"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+
+                  {cameraError && (
+                    <p className="rounded-2xl border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-red-300">
+                      {cameraError}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-4">
         <div className="px-1">
           <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
@@ -590,42 +682,10 @@ export default function AddPurchasePage() {
                   </label>
                 </div>
 
-                {cameraError && (
+                {cameraError && !cameraActive && (
                   <p className="mt-3 rounded-2xl border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-300">
                     {cameraError}
                   </p>
-                )}
-
-                {cameraActive && (
-                  <div className="mt-3 space-y-3 rounded-2xl border border-white/10 bg-slate-950 p-3">
-                    <div className="overflow-hidden rounded-2xl border border-white/10 bg-black">
-                      <video
-                        ref={videoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        className="block max-h-[300px] w-full object-cover"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <button
-                        type="button"
-                        onClick={capturePhoto}
-                        className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
-                      >
-                        Capture
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={stopCamera}
-                        className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
                 )}
 
                 {receiptImage && (
@@ -667,12 +727,25 @@ export default function AddPurchasePage() {
                           scanValidation.confidence
                         )}`}
                       >
-                        <p className="text-sm font-semibold">
-                          {getValidationTitle(scanValidation.confidence)}
-                        </p>
-                        <p className="mt-1 text-xs opacity-90">
-                          {getValidationDescription(scanValidation)}
-                        </p>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold">
+                              {getValidationTitle(scanValidation.confidence)}
+                            </p>
+                            <p className="mt-1 text-xs opacity-90">
+                              {getValidationDescription(scanValidation)}
+                            </p>
+                          </div>
+
+                          <div className="shrink-0 rounded-xl border border-white/10 bg-black/10 px-2.5 py-2 text-right">
+                            <p className="text-[10px] uppercase tracking-wide opacity-75">
+                              Score
+                            </p>
+                            <p className="mt-1 text-sm font-semibold">
+                              {scanValidation.points ?? 0}
+                            </p>
+                          </div>
+                        </div>
 
                         <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
                           <div className="rounded-xl border border-white/10 bg-black/10 px-2 py-2">
