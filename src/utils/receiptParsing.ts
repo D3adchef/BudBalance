@@ -63,6 +63,18 @@ const PAREN_GRAMS_PATTERN =
 const LOOSE_GRAMS_PATTERN =
   /(\d*\.?\d+)\s?g\b/i
 
+const NUMERIC_DATE_CANDIDATE_PATTERN =
+  /\b\d{1,4}\s*[\/\-.]\s*\d{1,2}\s*[\/\-.]\s*\d{1,4}\b/
+
+const OCR_FLEX_TIME_PATTERN =
+  /\b\d{1,2}\s*[:.;]\s*\d{2}(?:\s*[:.;]\s*\d{2})?\s*(?:AM|PM|am|pm)?\b/
+
+const COMPACT_TIME_WITH_MERIDIEM_PATTERN =
+  /\b\d{3,4}\s*(?:AM|PM|am|pm)\b/
+
+const SPACED_TIME_WITH_MERIDIEM_PATTERN =
+  /\b\d{1,2}\s+\d{2}\s*(?:AM|PM|am|pm)\b/
+
 type DispensaryMatch = {
   name: string
   normalizedName: string
@@ -75,8 +87,149 @@ function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim()
 }
 
+function cleanOCRText(value: string) {
+  return normalizeWhitespace(
+    value
+      .replace(/[“”‘’`´]/g, "")
+      .replace(/[–—]/g, "-")
+      .replace(/[|]/g, " ")
+      .replace(/\b(\d)\s*[:.;]\s*(\d{2})(\s*[AaPp][Mm])\b/g, "$1:$2$3")
+      .replace(/\b(\d)\s*[:.;]\s*(\d{2})\s*[:.;]\s*(\d{2})\b/g, "$1:$2:$3")
+      .replace(/\b(\d)\s*[Oo]\b/g, "$10")
+      .replace(/\b(am|pm)\b/gi, (match) => match.toUpperCase())
+      .replace(/[^\w\s:/\-.(),]/g, " ")
+  )
+}
+
+function normalizeOcrDigitsNearNumbers(value: string) {
+  return value
+    .replace(/(?<=\d)[oO](?=\d|\b)/g, "0")
+    .replace(/(?<=\b\d)[lI](?=\d|\b)/g, "1")
+    .replace(/(?<=\d)[lI](?=\d|\b)/g, "1")
+}
+
+function normalizeDateCandidate(value: string) {
+  return normalizeWhitespace(
+    normalizeOcrDigitsNearNumbers(value)
+      .replace(/\s*([\/\-.])\s*/g, "$1")
+      .replace(/,/g, ", ")
+      .replace(/\s{2,}/g, " ")
+  )
+}
+
+function normalizeTimeCandidate(value: string) {
+  let cleaned = normalizeWhitespace(normalizeOcrDigitsNearNumbers(value))
+    .replace(/[.;]/g, ":")
+    .replace(/\s*:\s*/g, ":")
+    .replace(/\b(am|pm)\b/gi, (match) => match.toUpperCase())
+
+  const compactMatch = cleaned.match(/^(\d{3,4})\s*(AM|PM)$/i)
+  if (compactMatch) {
+    const digits = compactMatch[1]
+    const period = compactMatch[2].toUpperCase()
+    const hour = digits.length === 3 ? digits.slice(0, 1) : digits.slice(0, 2)
+    const minute = digits.slice(-2)
+    cleaned = `${hour}:${minute} ${period}`
+  }
+
+  const spacedMatch = cleaned.match(/^(\d{1,2})\s+(\d{2})\s*(AM|PM)$/i)
+  if (spacedMatch) {
+    cleaned = `${spacedMatch[1]}:${spacedMatch[2]} ${spacedMatch[3].toUpperCase()}`
+  }
+
+  const noSpaceMeridiemMatch = cleaned.match(/^(\d{1,2}:\d{2}(?::\d{2})?)(AM|PM)$/i)
+  if (noSpaceMeridiemMatch) {
+    cleaned = `${noSpaceMeridiemMatch[1]} ${noSpaceMeridiemMatch[2].toUpperCase()}`
+  }
+
+  return cleaned
+}
+
+function getDateCandidatesFromText(value: string) {
+  const cleaned = cleanOCRText(value)
+  const candidates = new Set<string>()
+
+  const monthNameMatches = cleaned.match(new RegExp(MONTH_NAME_DATE_PATTERN, "gi")) || []
+  for (const match of monthNameMatches) {
+    candidates.add(normalizeDateCandidate(match))
+  }
+
+  const numericMatches = cleaned.match(new RegExp(NUMERIC_DATE_CANDIDATE_PATTERN, "g")) || []
+  for (const match of numericMatches) {
+    candidates.add(normalizeDateCandidate(match))
+  }
+
+  const directDateMatches = cleaned.match(new RegExp(DATE_PATTERN, "g")) || []
+  for (const match of directDateMatches) {
+    candidates.add(normalizeDateCandidate(match))
+  }
+
+  return [...candidates]
+}
+
+function getTimeCandidatesFromText(value: string) {
+  const cleaned = cleanOCRText(value)
+  const candidates = new Set<string>()
+
+  const flexMatches = cleaned.match(new RegExp(OCR_FLEX_TIME_PATTERN, "gi")) || []
+  for (const match of flexMatches) {
+    candidates.add(normalizeTimeCandidate(match))
+  }
+
+  const standardMatches =
+    cleaned.match(new RegExp(TIME_WITH_OPTIONAL_SECONDS_PATTERN, "gi")) || []
+  for (const match of standardMatches) {
+    candidates.add(normalizeTimeCandidate(match))
+  }
+
+  const compactMatches =
+    cleaned.match(new RegExp(COMPACT_TIME_WITH_MERIDIEM_PATTERN, "gi")) || []
+  for (const match of compactMatches) {
+    candidates.add(normalizeTimeCandidate(match))
+  }
+
+  const spacedMatches =
+    cleaned.match(new RegExp(SPACED_TIME_WITH_MERIDIEM_PATTERN, "gi")) || []
+  for (const match of spacedMatches) {
+    candidates.add(normalizeTimeCandidate(match))
+  }
+
+  return [...candidates]
+}
+
+function buildPriorityDateTimeSources(lines: string[], rawText: string) {
+  const sources: string[] = []
+  const headerLines = lines.slice(0, 20)
+
+  for (const line of headerLines.slice(0, 8)) {
+    sources.push(line)
+  }
+
+  for (let index = 0; index < Math.min(6, headerLines.length); index += 1) {
+    const combinedTwo = normalizeWhitespace(
+      [headerLines[index], headerLines[index + 1]].filter(Boolean).join(" ")
+    )
+    const combinedThree = normalizeWhitespace(
+      [headerLines[index], headerLines[index + 1], headerLines[index + 2]]
+        .filter(Boolean)
+        .join(" ")
+    )
+
+    if (combinedTwo) sources.push(combinedTwo)
+    if (combinedThree) sources.push(combinedThree)
+  }
+
+  for (const line of headerLines.slice(8)) {
+    sources.push(line)
+  }
+
+  sources.push(rawText)
+
+  return [...new Set(sources.map((source) => normalizeWhitespace(source)).filter(Boolean))]
+}
+
 export function normalizeDateForInput(value: string) {
-  const trimmed = normalizeWhitespace(value)
+  const trimmed = normalizeDateCandidate(value)
 
   const slashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/)
   if (slashMatch) {
@@ -97,6 +250,16 @@ export function normalizeDateForInput(value: string) {
     return `${year}-${month}-${day}`
   }
 
+  const dottedMatch = trimmed.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/)
+  if (dottedMatch) {
+    const month = dottedMatch[1].padStart(2, "0")
+    const day = dottedMatch[2].padStart(2, "0")
+    const year =
+      dottedMatch[3].length === 2 ? `20${dottedMatch[3]}` : dottedMatch[3]
+
+    return `${year}-${month}-${day}`
+  }
+
   const parsedMonthDate = new Date(trimmed)
   if (!Number.isNaN(parsedMonthDate.getTime())) {
     const year = parsedMonthDate.getFullYear()
@@ -110,7 +273,7 @@ export function normalizeDateForInput(value: string) {
 }
 
 export function normalizeTimeForInput(value: string) {
-  const trimmed = normalizeWhitespace(value)
+  const trimmed = normalizeTimeCandidate(value)
 
   const amPmWithSecondsMatch = trimmed.match(
     /^(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)$/i
@@ -147,6 +310,22 @@ export function normalizeTimeForInput(value: string) {
 
     if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
       return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
+    }
+  }
+
+  const compactMeridiem = trimmed.match(/^(\d{3,4})\s*(am|pm)$/i)
+  if (compactMeridiem) {
+    const digits = compactMeridiem[1]
+    const meridiem = compactMeridiem[2].toLowerCase()
+    const hour = Number(digits.length === 3 ? digits.slice(0, 1) : digits.slice(0, 2))
+    const minute = Number(digits.slice(-2))
+
+    if (hour >= 1 && hour <= 12 && minute >= 0 && minute <= 59) {
+      let resolvedHour = hour
+      if (meridiem === "pm" && resolvedHour !== 12) resolvedHour += 12
+      if (meridiem === "am" && resolvedHour === 12) resolvedHour = 0
+
+      return `${String(resolvedHour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
     }
   }
 
@@ -272,52 +451,42 @@ export function looksLikeAddressLine(line: string) {
 }
 
 function extractDateAndTime(lines: string[], rawText: string) {
-  let normalizedDate = ""
-  let normalizedTime = ""
+  let bestDate = ""
+  let bestTime = ""
 
-  for (const line of lines) {
-    const monthNameDateMatch = line.match(MONTH_NAME_DATE_PATTERN)
-    if (!normalizedDate && monthNameDateMatch?.[0]) {
-      normalizedDate = normalizeDateForInput(monthNameDateMatch[0])
+  const sources = buildPriorityDateTimeSources(lines, rawText)
+
+  for (const source of sources) {
+    if (!bestDate) {
+      const dateCandidates = getDateCandidatesFromText(source)
+
+      for (const candidate of dateCandidates) {
+        const normalized = normalizeDateForInput(candidate)
+        if (normalized) {
+          bestDate = normalized
+          break
+        }
+      }
     }
 
-    const numericDateMatch = line.match(DATE_PATTERN)
-    if (!normalizedDate && numericDateMatch?.[0]) {
-      normalizedDate = normalizeDateForInput(numericDateMatch[0])
+    if (!bestTime) {
+      const timeCandidates = getTimeCandidatesFromText(source)
+
+      for (const candidate of timeCandidates) {
+        const normalized = normalizeTimeForInput(candidate)
+        if (normalized) {
+          bestTime = normalized
+          break
+        }
+      }
     }
 
-    const timeMatch = line.match(TIME_WITH_OPTIONAL_SECONDS_PATTERN)
-    if (!normalizedTime && timeMatch?.[0]) {
-      normalizedTime = normalizeTimeForInput(timeMatch[0])
-    }
-
-    if (normalizedDate && normalizedTime) break
-  }
-
-  if (!normalizedDate) {
-    const monthDateFromRaw = rawText.match(MONTH_NAME_DATE_PATTERN)
-    if (monthDateFromRaw?.[0]) {
-      normalizedDate = normalizeDateForInput(monthDateFromRaw[0])
-    }
-  }
-
-  if (!normalizedDate) {
-    const numericDateFromRaw = rawText.match(DATE_PATTERN)
-    if (numericDateFromRaw?.[0]) {
-      normalizedDate = normalizeDateForInput(numericDateFromRaw[0])
-    }
-  }
-
-  if (!normalizedTime) {
-    const timeFromRaw = rawText.match(TIME_WITH_OPTIONAL_SECONDS_PATTERN)
-    if (timeFromRaw?.[0]) {
-      normalizedTime = normalizeTimeForInput(timeFromRaw[0])
-    }
+    if (bestDate && bestTime) break
   }
 
   return {
-    purchaseDate: normalizedDate,
-    purchaseTime: normalizedTime,
+    purchaseDate: bestDate,
+    purchaseTime: bestTime,
   }
 }
 
@@ -428,11 +597,24 @@ function scoreDispensaryCandidate(line: string, fullText: string) {
 }
 
 function extractDispensary(lines: string[], rawText: string) {
-  const likelyHeaderLines = lines.slice(0, 12)
+  const likelyHeaderLines = lines.slice(0, 14)
 
   let bestMatch: DispensaryMatch | null = null
+  let bestWeightedPoints = -1
 
-  for (const line of likelyHeaderLines) {
+  const candidateLines = [...likelyHeaderLines]
+
+  for (let index = 0; index < Math.min(5, likelyHeaderLines.length); index += 1) {
+    const combined = normalizeWhitespace(
+      [likelyHeaderLines[index], likelyHeaderLines[index + 1]]
+        .filter(Boolean)
+        .join(" ")
+    )
+    if (combined) candidateLines.push(combined)
+  }
+
+  for (let index = 0; index < candidateLines.length; index += 1) {
+    const line = candidateLines[index]
     const lower = line.toLowerCase()
 
     if (lower.length < 3) continue
@@ -440,6 +622,7 @@ function extractDispensary(lines: string[], rawText: string) {
     if (MONTH_NAME_DATE_PATTERN.test(lower)) continue
     if (TIME_PATTERN.test(lower)) continue
     if (TIME_WITH_OPTIONAL_SECONDS_PATTERN.test(lower)) continue
+    if (OCR_FLEX_TIME_PATTERN.test(lower)) continue
     if (PHONE_PATTERN.test(lower)) continue
     if (looksLikeAddressLine(lower)) continue
     if (isBlacklistedDispensaryLine(lower)) continue
@@ -448,8 +631,23 @@ function extractDispensary(lines: string[], rawText: string) {
     const candidate = scoreDispensaryCandidate(line, rawText)
     if (!candidate) continue
 
-    if (!bestMatch || candidate.points > bestMatch.points) {
-      bestMatch = candidate
+    const isOriginalTopLine = index < likelyHeaderLines.length
+    const headerBoost =
+      isOriginalTopLine && index <= 2 ? 2 : isOriginalTopLine && index <= 5 ? 1 : 0
+
+    const weightedPoints = candidate.points + headerBoost
+
+    if (headerBoost > 0) {
+      candidate.matchedBy = [...candidate.matchedBy, `header-priority:+${headerBoost}`]
+    }
+
+    if (!bestMatch || weightedPoints > bestWeightedPoints) {
+      bestMatch = {
+        ...candidate,
+        points: weightedPoints,
+        confidence: getConfidenceFromPoints(weightedPoints),
+      }
+      bestWeightedPoints = weightedPoints
     }
   }
 
