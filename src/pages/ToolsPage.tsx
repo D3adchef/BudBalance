@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import PageIntroPopup from "../components/PageIntroPopup"
 import { supabase } from "../lib/supabase"
+import { deleteCurrentAccount } from "../lib/deleteCurrentAccount"
 import { useAuthStore } from "../features/auth/authStore"
 import { useFavoritesStore } from "../features/favorites/favoritesStore"
 import { useAllotmentStore } from "../features/allotment/allotmentStore"
@@ -12,6 +13,8 @@ type OpenSection =
   | "purchases"
   | "help"
   | "glossary"
+  | "terms"
+  | "privacy"
   | "contact"
   | null
 
@@ -189,7 +192,6 @@ export default function ToolsPage() {
   const updateCurrentUserPassword = useAuthStore(
     (state) => state.updateCurrentUserPassword
   )
-  const deleteCurrentUser = useAuthStore((state) => state.deleteCurrentUser)
 
   const favoriteDispensaries = useFavoritesStore(
     (state) => state.favoriteDispensaries
@@ -231,6 +233,7 @@ export default function ToolsPage() {
 
   const [isEditingAccount, setIsEditingAccount] = useState(false)
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
   const [editFirstName, setEditFirstName] = useState("")
   const [editLastName, setEditLastName] = useState("")
@@ -543,13 +546,24 @@ export default function ToolsPage() {
 
   async function handleDeleteAccount() {
     const confirmed = window.confirm(
-      "Are you sure you want to delete this account? This cannot be undone."
+      "Are you sure you want to permanently delete this account and all BudBalance data? This cannot be undone."
     )
 
     if (!confirmed) return
 
-    await deleteCurrentUser()
-    navigate("/login")
+    try {
+      setIsDeletingAccount(true)
+
+      await deleteCurrentAccount()
+
+      await logout()
+      navigate("/login", { replace: true })
+    } catch (error) {
+      console.error("Failed to delete account:", error)
+      alert("Failed to delete account. Please try again.")
+    } finally {
+      setIsDeletingAccount(false)
+    }
   }
 
   async function handleLogout() {
@@ -566,7 +580,7 @@ export default function ToolsPage() {
       <PageIntroPopup
         pageKey="tools"
         title="Tools"
-        description="Use this page to manage account details, save favorite dispensaries and favorite purchases, review help guides, and browse common dispensary terms in the glossary."
+        description="Use this page to manage account details, save favorite dispensaries and favorite purchases, review help guides, browse common dispensary terms in the glossary, and review app policies."
       />
 
       <div className="space-y-4">
@@ -576,7 +590,8 @@ export default function ToolsPage() {
           </p>
           <h1 className="mt-1 text-lg font-semibold text-white">Tools</h1>
           <p className="mt-1 text-xs text-slate-400">
-            Manage your account, favorites, help guides, glossary, and support.
+            Manage your account, favorites, help guides, glossary, policies, and
+            support.
           </p>
         </div>
 
@@ -658,9 +673,10 @@ export default function ToolsPage() {
                     <button
                       type="button"
                       onClick={handleDeleteAccount}
-                      className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/15"
+                      disabled={isDeletingAccount}
+                      className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Delete Account
+                      {isDeletingAccount ? "Deleting..." : "Delete Account"}
                     </button>
                   </div>
 
@@ -977,6 +993,225 @@ export default function ToolsPage() {
                     {entry.term}
                   </button>
                 ))}
+              </div>
+            </div>
+          )}
+
+          <CollapseHeader
+            title="Terms of Use"
+            isOpen={openSection === "terms"}
+            onClick={() => toggleSection("terms")}
+          />
+
+          {openSection === "terms" && (
+            <div className="rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-4">
+              <div className="space-y-4 text-sm leading-6 text-slate-300">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-emerald-300">
+                    Last Updated
+                  </p>
+                  <p className="mt-1 text-sm text-white">March 2026</p>
+                </div>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-white">
+                    1. Use of the App
+                  </h3>
+                  <p className="mt-1">
+                    BudBalance is provided for personal, non-commercial use. You
+                    agree to use the app only for lawful purposes and in a way
+                    that does not infringe on the rights of others.
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-white">
+                    2. User Accounts
+                  </h3>
+                  <p className="mt-1">
+                    You are responsible for maintaining the confidentiality of
+                    your account and login information. You are responsible for
+                    all activity that occurs under your account.
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-white">
+                    3. User Data
+                  </h3>
+                  <p className="mt-1">
+                    You may store personal data such as purchase history,
+                    preferences, and account details. You are responsible for the
+                    accuracy of the information you provide.
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-white">
+                    4. Account Deletion
+                  </h3>
+                  <p className="mt-1">
+                    You may delete your account at any time using the in-app
+                    delete feature. Upon deletion, your account and stored data
+                    will be permanently removed. This action cannot be undone.
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-white">
+                    5. No Medical Advice
+                  </h3>
+                  <p className="mt-1">
+                    BudBalance does not provide medical or legal advice. Any
+                    information provided is for informational purposes only.
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-white">
+                    6. Limitation of Liability
+                  </h3>
+                  <p className="mt-1">
+                    BudBalance is provided &quot;as is&quot; without warranties
+                    of any kind. We are not responsible for any damages resulting
+                    from the use or inability to use the app.
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-white">
+                    7. Changes to Terms
+                  </h3>
+                  <p className="mt-1">
+                    We may update these Terms of Use from time to time.
+                    Continued use of the app constitutes acceptance of those
+                    changes.
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-white">8. Contact</h3>
+                  <p className="mt-1">
+                    Questions about these Terms of Use may be sent to:
+                  </p>
+                  <p className="mt-1 text-emerald-300">
+                    j.marquis504@proton.me
+                  </p>
+                </section>
+              </div>
+            </div>
+          )}
+
+          <CollapseHeader
+            title="Privacy Policy"
+            isOpen={openSection === "privacy"}
+            onClick={() => toggleSection("privacy")}
+          />
+
+          {openSection === "privacy" && (
+            <div className="rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-4">
+              <div className="space-y-4 text-sm leading-6 text-slate-300">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-emerald-300">
+                    Last Updated
+                  </p>
+                  <p className="mt-1 text-sm text-white">March 2026</p>
+                </div>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-white">
+                    1. Information We Collect
+                  </h3>
+                  <p className="mt-1">
+                    We may collect account information such as email, username,
+                    and other details you choose to provide. We also store
+                    user-generated content such as purchases and preferences.
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-white">
+                    2. How We Use Information
+                  </h3>
+                  <p className="mt-1">
+                    We use your information to provide and maintain the app,
+                    store your preferences and purchase history, and improve the
+                    user experience.
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-white">
+                    3. Data Storage
+                  </h3>
+                  <p className="mt-1">
+                    Your data is stored using Supabase. We take reasonable
+                    measures to protect your information, but no system can be
+                    guaranteed to be completely secure.
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-white">
+                    4. Data Sharing
+                  </h3>
+                  <p className="mt-1">
+                    We do not sell or share your personal data with third
+                    parties for marketing purposes.
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-white">
+                    5. Account Deletion
+                  </h3>
+                  <p className="mt-1">
+                    You may delete your account at any time using the in-app
+                    delete feature. When you do, your account and personal data
+                    are permanently removed from our system.
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-white">
+                    6. Security
+                  </h3>
+                  <p className="mt-1">
+                    We implement reasonable safeguards to protect your
+                    information. However, no method of storage or transmission
+                    is 100% secure.
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-white">
+                    7. Children&apos;s Privacy
+                  </h3>
+                  <p className="mt-1">
+                    BudBalance is not intended for users under the age of 18.
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-white">
+                    8. Changes to This Policy
+                  </h3>
+                  <p className="mt-1">
+                    We may update this Privacy Policy from time to time.
+                    Continued use of the app after changes are posted means you
+                    accept those changes.
+                  </p>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-semibold text-white">9. Contact</h3>
+                  <p className="mt-1">
+                    Questions about this Privacy Policy may be sent to:
+                  </p>
+                  <p className="mt-1 text-emerald-300">
+                    j.marquis504@proton.me
+                  </p>
+                </section>
               </div>
             </div>
           )}
