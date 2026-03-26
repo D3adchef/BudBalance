@@ -15,11 +15,15 @@ export function createEmptyItem(): DraftItem {
 }
 
 export function getItemSummary(item: DraftItem) {
+  const name = item.productName.trim()
+  const category = item.category.trim()
+  const grams = item.grams.trim()
+
   const parts: string[] = []
 
-  if (item.productName.trim()) parts.push(item.productName.trim())
-  if (item.category.trim()) parts.push(item.category.trim())
-  if (item.grams.trim()) parts.push(`${item.grams}g`)
+  if (name) parts.push(name)
+  if (category) parts.push(category)
+  if (grams) parts.push(`${grams}g`)
 
-  return parts.length > 0 ? parts.join(" • ") : "Tap to add details"
+  return parts.length ? parts.join(" • ") : "Tap to add details"
 }

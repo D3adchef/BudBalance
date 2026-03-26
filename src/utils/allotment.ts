@@ -4,7 +4,12 @@ const ALLOTMENT_LIMIT = 84.03
 const WINDOW_DAYS = 30
 const MS_PER_DAY = 1000 * 60 * 60 * 24
 
-function buildPurchaseDateTime(purchase: Pick<Purchase, "purchaseDate" | "purchaseTime" | "purchaseDateTime">) {
+type PurchaseDateFields = Pick<
+  Purchase,
+  "purchaseDate" | "purchaseTime" | "purchaseDateTime"
+>
+
+function buildPurchaseDateTime(purchase: PurchaseDateFields) {
   const safeDateTime = String(purchase.purchaseDateTime ?? "").trim()
   if (safeDateTime) return safeDateTime
 
@@ -15,9 +20,7 @@ function buildPurchaseDateTime(purchase: Pick<Purchase, "purchaseDate" | "purcha
   return `${safeDate}T${safeTime}`
 }
 
-function parsePurchaseDateTime(
-  purchase: Pick<Purchase, "purchaseDate" | "purchaseTime" | "purchaseDateTime">
-) {
+function parsePurchaseDateTime(purchase: PurchaseDateFields) {
   const resolved = buildPurchaseDateTime(purchase)
   return resolved ? new Date(resolved) : new Date("")
 }
@@ -26,19 +29,27 @@ function roundToTwo(num: number) {
   return Math.round(num * 100) / 100
 }
 
+function getPurchaseItems(purchase: Purchase) {
+  return Array.isArray(purchase.items) ? purchase.items : []
+}
+
 function getPurchaseTotalGrams(purchase: Purchase) {
-  const items = Array.isArray(purchase.items) ? purchase.items : []
   return roundToTwo(
-    items.reduce((total, item) => total + Number(item.grams || 0), 0)
+    getPurchaseItems(purchase).reduce(
+      (total, item) => total + Number(item.grams || 0),
+      0
+    )
   )
 }
 
 function getRollOffDateTime(purchase: Purchase) {
   const purchaseDateTime = parsePurchaseDateTime(purchase)
   const rollOffDateTime = new Date(purchaseDateTime)
+
   rollOffDateTime.setTime(
     rollOffDateTime.getTime() + WINDOW_DAYS * MS_PER_DAY
   )
+
   return rollOffDateTime
 }
 
@@ -55,8 +66,10 @@ export function getActivePurchases(purchases: Purchase[]) {
 
     const rollOffDateTime = getRollOffDateTime(purchase)
 
-    return purchaseDateTime.getTime() <= now.getTime() &&
+    return (
+      purchaseDateTime.getTime() <= now.getTime() &&
       now.getTime() < rollOffDateTime.getTime()
+    )
   })
 }
 
@@ -85,7 +98,7 @@ export function getUpcomingRollOffs(purchases: Purchase[]) {
         purchaseTime: purchase.purchaseTime,
         purchaseDateTime: buildPurchaseDateTime(purchase),
         dispensary: purchase.dispensary,
-        items: Array.isArray(purchase.items) ? purchase.items : [],
+        items: getPurchaseItems(purchase),
         grams: getPurchaseTotalGrams(purchase),
         rollOffDate: rollOffDateTime.toISOString().split("T")[0],
         rollOffTime: rollOffDateTime.toTimeString().slice(0, 5),
@@ -105,7 +118,7 @@ export function getRecentPurchases(purchases: Purchase[], count = 3) {
     .slice(0, count)
     .map((purchase) => ({
       ...purchase,
-      items: Array.isArray(purchase.items) ? purchase.items : [],
+      items: getPurchaseItems(purchase),
       grams: getPurchaseTotalGrams(purchase),
     }))
 }
@@ -124,7 +137,7 @@ export function getTimelineEntries(purchases: Purchase[]) {
         purchaseTime: purchase.purchaseTime,
         purchaseDateTime: buildPurchaseDateTime(purchase),
         dispensary: purchase.dispensary,
-        items: Array.isArray(purchase.items) ? purchase.items : [],
+        items: getPurchaseItems(purchase),
         grams: getPurchaseTotalGrams(purchase),
         rollOffDate: rollOffDateTime.toISOString().split("T")[0],
         rollOffTime: rollOffDateTime.toTimeString().slice(0, 5),
@@ -141,8 +154,8 @@ export function getPlannerData(purchases: Purchase[]) {
   const upcomingRollOffs = getUpcomingRollOffs(purchases)
 
   const nextReturn = upcomingRollOffs.length > 0 ? upcomingRollOffs[0] : null
-
   const nextTwoReturns = upcomingRollOffs.slice(0, 2)
+
   const projectedGainSoon = roundToTwo(
     nextTwoReturns.reduce((total, item) => total + item.grams, 0)
   )

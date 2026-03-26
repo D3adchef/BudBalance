@@ -8,16 +8,16 @@ import { useAllotmentStore } from "../features/allotment/allotmentStore"
 import {
   type DraftItem,
   type ScanValidationResult,
-  createEmptyItem,
-  getTimePartsFrom24Hour,
-  convertTo24HourTime,
   buildPurchaseDateTime,
+  convertTo24HourTime,
+  createEmptyItem,
   createLocalDateTime,
+  getTimePartsFrom24Hour,
+  getValidationCardClasses,
+  getValidationDescription,
+  getValidationTitle,
   parseReceiptText,
   validateParsedReceipt,
-  getValidationCardClasses,
-  getValidationTitle,
-  getValidationDescription,
 } from "../utils/receiptParsing"
 import { buildProcessedImageFromCanvas } from "../utils/receiptImageProcessing"
 import { getItemSummary } from "../utils/purchaseItemHelpers"
@@ -37,6 +37,7 @@ type TorchCapableTrack = MediaStreamTrack & {
 
 export default function AddPurchasePage() {
   const addPurchase = usePurchaseStore((state) => state.addPurchase)
+
   const favoriteDispensaries = useFavoritesStore(
     (state) => state.favoriteDispensaries
   )
@@ -67,23 +68,26 @@ export default function AddPurchasePage() {
   const [purchaseHour, setPurchaseHour] = useState("")
   const [purchaseMinute, setPurchaseMinute] = useState("")
   const [purchasePeriod, setPurchasePeriod] = useState("AM")
+
   const [items, setItems] = useState<DraftItem[]>([createEmptyItem()])
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
   const [isPurchaseDetailsOpen, setIsPurchaseDetailsOpen] = useState(false)
 
   const [receiptImage, setReceiptImage] = useState<string | null>(null)
   const [ocrImage, setOcrImage] = useState<string | null>(null)
-  const [cameraActive, setCameraActive] = useState(false)
-  const [cameraError, setCameraError] = useState("")
-  const [stream, setStream] = useState<MediaStream | null>(null)
-  const [isScanning, setIsScanning] = useState(false)
   const [scanStatus, setScanStatus] = useState("")
   const [scanValidation, setScanValidation] =
     useState<ScanValidationResult | null>(null)
-  const [saveMessage, setSaveMessage] = useState("")
-  const [isSavingPurchase, setIsSavingPurchase] = useState(false)
+  const [isScanning, setIsScanning] = useState(false)
+
+  const [cameraActive, setCameraActive] = useState(false)
+  const [cameraError, setCameraError] = useState("")
+  const [stream, setStream] = useState<MediaStream | null>(null)
   const [flashSupported, setFlashSupported] = useState(false)
   const [flashEnabled, setFlashEnabled] = useState(false)
+
+  const [saveMessage, setSaveMessage] = useState("")
+  const [isSavingPurchase, setIsSavingPurchase] = useState(false)
 
   const purchaseTime = convertTo24HourTime(
     purchaseHour,
@@ -150,8 +154,18 @@ export default function AddPurchasePage() {
     }
   }, [cameraActive])
 
+  function resetScanState() {
+    setReceiptImage(null)
+    setOcrImage(null)
+    setScanStatus("")
+    setScanValidation(null)
+    setSaveMessage("")
+    setCameraError("")
+  }
+
   async function detectFlashSupport(mediaStream: MediaStream) {
     const [track] = mediaStream.getVideoTracks()
+
     if (!track) {
       setFlashSupported(false)
       setFlashEnabled(false)
@@ -166,6 +180,7 @@ export default function AddPurchasePage() {
       const supportsTorch = Boolean(capabilities?.torch)
 
       setFlashSupported(supportsTorch)
+
       if (!supportsTorch) {
         setFlashEnabled(false)
       }
@@ -212,12 +227,7 @@ export default function AddPurchasePage() {
   async function startCamera() {
     try {
       stopCamera()
-      setCameraError("")
-      setReceiptImage(null)
-      setOcrImage(null)
-      setScanStatus("")
-      setScanValidation(null)
-      setSaveMessage("")
+      resetScanState()
       setFlashEnabled(false)
       setFlashSupported(false)
 
@@ -260,6 +270,20 @@ export default function AddPurchasePage() {
     setFlashSupported(false)
   }
 
+  function saveCanvasImages(canvas: HTMLCanvasElement) {
+    const rawImage = canvas.toDataURL("image/png")
+    const processedImage = buildProcessedImageFromCanvas(canvas)
+
+    setReceiptImage(rawImage)
+    setOcrImage(processedImage)
+    setCameraError("")
+    setScanStatus("Receipt image ready to scan.")
+    setScanValidation(null)
+    setSaveMessage("")
+    openPurchaseDetails()
+    stopCamera()
+  }
+
   function capturePhoto() {
     if (!videoRef.current || !canvasRef.current) return
 
@@ -280,18 +304,7 @@ export default function AddPurchasePage() {
     if (!context) return
 
     context.drawImage(video, 0, 0, canvas.width, canvas.height)
-
-    const rawImageDataUrl = canvas.toDataURL("image/png")
-    const processedImageDataUrl = buildProcessedImageFromCanvas(canvas)
-
-    setReceiptImage(rawImageDataUrl)
-    setOcrImage(processedImageDataUrl)
-    setCameraError("")
-    setScanStatus("Receipt image ready to scan.")
-    setScanValidation(null)
-    setSaveMessage("")
-    openPurchaseDetails()
-    stopCamera()
+    saveCanvasImages(canvas)
   }
 
   function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
@@ -313,20 +326,9 @@ export default function AddPurchasePage() {
 
         canvas.width = image.width
         canvas.height = image.height
-
         context.drawImage(image, 0, 0, canvas.width, canvas.height)
 
-        const rawImage = canvas.toDataURL("image/png")
-        const processedImage = buildProcessedImageFromCanvas(canvas)
-
-        setReceiptImage(rawImage)
-        setOcrImage(processedImage)
-        setCameraError("")
-        setScanStatus("Receipt image ready to scan.")
-        setScanValidation(null)
-        setSaveMessage("")
-        openPurchaseDetails()
-        stopCamera()
+        saveCanvasImages(canvas)
       }
 
       image.onerror = () => {
@@ -368,7 +370,6 @@ export default function AddPurchasePage() {
     const selectedFavorite = favoritePurchases.find(
       (favorite) => favorite.id === favoriteId
     )
-
     if (!selectedFavorite) return
 
     setItems((currentItems) =>
@@ -511,6 +512,8 @@ export default function AddPurchasePage() {
   }
 
   function resetForm() {
+    const firstItem = createEmptyItem()
+
     setDispensary("")
     setSelectedFavoriteDispensary("")
     setNotes("")
@@ -518,7 +521,6 @@ export default function AddPurchasePage() {
     setPurchaseHour("")
     setPurchaseMinute("")
     setPurchasePeriod("AM")
-    const firstItem = createEmptyItem()
     setItems([firstItem])
     setExpandedItemId(null)
     setIsPurchaseDetailsOpen(false)
@@ -595,7 +597,6 @@ export default function AddPurchasePage() {
       })
 
       await completeInitialSetup()
-
       resetForm()
       setSaveMessage("Purchase saved. You can add another one now.")
     } catch (error) {
@@ -1081,13 +1082,21 @@ export default function AddPurchasePage() {
                                   <select
                                     defaultValue=""
                                     onChange={(e) =>
-                                      applyFavoritePurchase(item.id, e.target.value)
+                                      applyFavoritePurchase(
+                                        item.id,
+                                        e.target.value
+                                      )
                                     }
                                     className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
                                   >
-                                    <option value="">Choose favorite purchase</option>
+                                    <option value="">
+                                      Choose favorite purchase
+                                    </option>
                                     {favoritePurchases.map((favorite) => (
-                                      <option key={favorite.id} value={favorite.id}>
+                                      <option
+                                        key={favorite.id}
+                                        value={favorite.id}
+                                      >
                                         {favorite.name} • {favorite.category} •{" "}
                                         {favorite.grams}g
                                       </option>
@@ -1104,7 +1113,11 @@ export default function AddPurchasePage() {
                                   placeholder="Enter product name"
                                   value={item.productName}
                                   onChange={(e) =>
-                                    updateItem(item.id, "productName", e.target.value)
+                                    updateItem(
+                                      item.id,
+                                      "productName",
+                                      e.target.value
+                                    )
                                   }
                                   className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
                                 />
@@ -1118,7 +1131,11 @@ export default function AddPurchasePage() {
                                   <select
                                     value={item.category}
                                     onChange={(e) =>
-                                      updateItem(item.id, "category", e.target.value)
+                                      updateItem(
+                                        item.id,
+                                        "category",
+                                        e.target.value
+                                      )
                                     }
                                     className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none focus:border-emerald-500"
                                   >
@@ -1127,7 +1144,9 @@ export default function AddPurchasePage() {
                                     <option value="pre-roll">Pre-Roll</option>
                                     <option value="edible">Edible</option>
                                     <option value="vape">Vape</option>
-                                    <option value="concentrate">Concentrate</option>
+                                    <option value="concentrate">
+                                      Concentrate
+                                    </option>
                                   </select>
                                 </div>
 
@@ -1141,7 +1160,11 @@ export default function AddPurchasePage() {
                                     step="0.01"
                                     value={item.grams}
                                     onChange={(e) =>
-                                      updateItem(item.id, "grams", e.target.value)
+                                      updateItem(
+                                        item.id,
+                                        "grams",
+                                        e.target.value
+                                      )
                                     }
                                     className="w-full rounded-2xl border border-white/10 bg-slate-800/90 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-500"
                                   />

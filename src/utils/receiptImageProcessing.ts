@@ -13,6 +13,61 @@ function isReasonableBinaryRatio(ratio: number) {
   return ratio > 0.18 && ratio < 0.96
 }
 
+function createSharpenKernel() {
+  return cv.matFromArray(3, 3, cv.CV_32F, [0, -1, 0, -1, 5, -1, 0, -1, 0])
+}
+
+function createMorphKernel() {
+  return cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2, 2))
+}
+
+function chooseBestOutput(
+  binaryOtsu: any,
+  adaptive: any,
+  morphOtsu: any,
+  morphAdaptive: any
+) {
+  const otsuRatio = computeWhitePixelRatio(binaryOtsu)
+  const adaptiveRatio = computeWhitePixelRatio(adaptive)
+  const morphOtsuRatio = computeWhitePixelRatio(morphOtsu)
+  const morphAdaptiveRatio = computeWhitePixelRatio(morphAdaptive)
+
+  if (
+    isReasonableBinaryRatio(morphAdaptiveRatio) &&
+    !isReasonableBinaryRatio(morphOtsuRatio)
+  ) {
+    return morphAdaptive
+  }
+
+  if (
+    isReasonableBinaryRatio(morphOtsuRatio) &&
+    !isReasonableBinaryRatio(morphAdaptiveRatio)
+  ) {
+    return morphOtsu
+  }
+
+  if (
+    isReasonableBinaryRatio(adaptiveRatio) &&
+    (otsuRatio <= 0.12 || otsuRatio >= 0.98)
+  ) {
+    return morphAdaptiveRatio >= 0.15 ? morphAdaptive : adaptive
+  }
+
+  if (isReasonableBinaryRatio(morphOtsuRatio)) {
+    return morphOtsu
+  }
+
+  if (isReasonableBinaryRatio(morphAdaptiveRatio)) {
+    return morphAdaptive
+  }
+
+  if (isReasonableBinaryRatio(adaptiveRatio)) {
+    return adaptive
+  }
+
+  return binaryOtsu
+}
+
 export function preprocessCanvasImage(canvas: HTMLCanvasElement) {
   if (!isOpenCvReady()) return
 
@@ -25,6 +80,8 @@ export function preprocessCanvasImage(canvas: HTMLCanvasElement) {
   const adaptive = new cv.Mat()
   const morphOtsu = new cv.Mat()
   const morphAdaptive = new cv.Mat()
+  const sharpenKernel = createSharpenKernel()
+  const morphKernel = createMorphKernel()
 
   try {
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0)
@@ -39,12 +96,6 @@ export function preprocessCanvasImage(canvas: HTMLCanvasElement) {
       0,
       cv.BORDER_DEFAULT
     )
-
-    const sharpenKernel = cv.matFromArray(3, 3, cv.CV_32F, [
-      0, -1, 0,
-      -1, 5, -1,
-      0, -1, 0,
-    ])
 
     cv.filter2D(
       denoised,
@@ -74,11 +125,6 @@ export function preprocessCanvasImage(canvas: HTMLCanvasElement) {
       8
     )
 
-    const morphKernel = cv.getStructuringElement(
-      cv.MORPH_RECT,
-      new cv.Size(2, 2)
-    )
-
     cv.morphologyEx(
       binaryOtsu,
       morphOtsu,
@@ -97,40 +143,14 @@ export function preprocessCanvasImage(canvas: HTMLCanvasElement) {
       1
     )
 
-    const otsuRatio = computeWhitePixelRatio(binaryOtsu)
-    const adaptiveRatio = computeWhitePixelRatio(adaptive)
-    const morphOtsuRatio = computeWhitePixelRatio(morphOtsu)
-    const morphAdaptiveRatio = computeWhitePixelRatio(morphAdaptive)
-
-    let output = binaryOtsu
-
-    if (
-      isReasonableBinaryRatio(morphAdaptiveRatio) &&
-      !isReasonableBinaryRatio(morphOtsuRatio)
-    ) {
-      output = morphAdaptive
-    } else if (
-      isReasonableBinaryRatio(morphOtsuRatio) &&
-      !isReasonableBinaryRatio(morphAdaptiveRatio)
-    ) {
-      output = morphOtsu
-    } else if (
-      isReasonableBinaryRatio(adaptiveRatio) &&
-      (otsuRatio <= 0.12 || otsuRatio >= 0.98)
-    ) {
-      output = morphAdaptiveRatio >= 0.15 ? morphAdaptive : adaptive
-    } else if (isReasonableBinaryRatio(morphOtsuRatio)) {
-      output = morphOtsu
-    } else if (isReasonableBinaryRatio(morphAdaptiveRatio)) {
-      output = morphAdaptive
-    } else if (isReasonableBinaryRatio(adaptiveRatio)) {
-      output = adaptive
-    }
+    const output = chooseBestOutput(
+      binaryOtsu,
+      adaptive,
+      morphOtsu,
+      morphAdaptive
+    )
 
     cv.imshow(canvas, output)
-
-    sharpenKernel.delete()
-    morphKernel.delete()
   } finally {
     src.delete()
     gray.delete()
@@ -141,6 +161,8 @@ export function preprocessCanvasImage(canvas: HTMLCanvasElement) {
     adaptive.delete()
     morphOtsu.delete()
     morphAdaptive.delete()
+    sharpenKernel.delete()
+    morphKernel.delete()
   }
 }
 
@@ -150,16 +172,17 @@ export function buildProcessedImageFromCanvas(sourceCanvas: HTMLCanvasElement) {
   tempCanvas.height = sourceCanvas.height
 
   const tempContext = tempCanvas.getContext("2d")
-  if (!tempContext) return null
+  if (!tempContext) {
+    return sourceCanvas.toDataURL("image/png")
+  }
 
   tempContext.drawImage(sourceCanvas, 0, 0)
 
   try {
     preprocessCanvasImage(tempCanvas)
+    return tempCanvas.toDataURL("image/png")
   } catch (error) {
     console.error("OpenCV preprocessing failed:", error)
     return sourceCanvas.toDataURL("image/png")
   }
-
-  return tempCanvas.toDataURL("image/png")
 }

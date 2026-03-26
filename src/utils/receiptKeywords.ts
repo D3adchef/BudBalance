@@ -207,7 +207,6 @@ export const DISPENSARY_BLACKLIST_WORDS: string[] = [
   "batch",
   "register",
   "drawer",
-  "subtotal",
   "payment",
   "sales tax",
   "state tax",
@@ -227,9 +226,12 @@ export const PHONE_PATTERN = /\d{3}[-.)\s]\d{3}[-.\s]\d{4}/
 
 export const GRAMS_INLINE_TRAILING_PATTERN =
   /^(.*?)(\d+(?:\.\d+)?)\s?g\b/i
+
 export const GRAMS_INLINE_LEADING_PATTERN =
   /^(\d+(?:\.\d+)?)\s?g\b\s*(.*)$/i
+
 export const GRAMS_ONLY_PATTERN = /^(\d+(?:\.\d+)?)\s?g\b$/i
+
 export const MG_PATTERN = /\b\d+\s?mg\b/i
 
 export const MISSISSIPPI_DISPENSARY_NAMES_RAW = [
@@ -423,52 +425,25 @@ const DISPENSARY_SPECIAL_ALIASES: Record<string, string[]> = {
     "420 bay saint louis",
     "420 bay st. louis",
   ],
-  "biosciences of mississippi": [
-    "biosciences of ms",
-    "biosciences ms",
-  ],
+  "biosciences of mississippi": ["biosciences of ms", "biosciences ms"],
   "diamond leaf": ["diamondleaf"],
-  "mary jane and herbs": [
-    "mary jane and herb s",
-    "mary jane herbs",
-  ],
-  "dabbs 1": [
-    "dabbs1",
-    "dabbs",
-  ],
-  "dabbs 2": [
-    "dabbs2",
-    "dabbs",
-  ],
+  "mary jane and herbs": ["mary jane and herb s", "mary jane herbs"],
+  "dabbs 1": ["dabbs1", "dabbs"],
+  "dabbs 2": ["dabbs2", "dabbs"],
   "firefly no 2": [
     "firefly 2",
     "firefly #2",
     "firefly cannabis 2",
     "firefly",
   ],
-  "firefly": [
-    "firefly cannabis",
-  ],
+  firefly: ["firefly cannabis"],
   "local remedy": ["localremedy"],
   "merit creek": ["meritcreek"],
   "ms moss": ["msmoss"],
-  "ms mudd 1": [
-    "msmudd 1",
-    "ms mudd one",
-    "ms mudd",
-  ],
-  "ms mudd 2": [
-    "msmudd 2",
-    "ms mudd",
-  ],
-  "ms mudd 3": [
-    "msmudd 3",
-    "ms mudd",
-  ],
-  "ms mudd 4": [
-    "msmudd 4",
-    "ms mudd",
-  ],
+  "ms mudd 1": ["msmudd 1", "ms mudd one", "ms mudd"],
+  "ms mudd 2": ["msmudd 2", "ms mudd"],
+  "ms mudd 3": ["msmudd 3", "ms mudd"],
+  "ms mudd 4": ["msmudd 4", "ms mudd"],
   "sb o springs": [
     "sb osprings",
     "sb ocean springs",
@@ -478,16 +453,9 @@ const DISPENSARY_SPECIAL_ALIASES: Record<string, string[]> = {
     "starbuds",
     "star buds",
   ],
-  "strong river disp": [
-    "strong river",
-    "strong river dispensary",
-  ],
-  "toke and tell 2": [
-    "toke and tell dispensary 2",
-  ],
-  "toke and tell": [
-    "toke tell",
-  ],
+  "strong river disp": ["strong river", "strong river dispensary"],
+  "toke and tell 2": ["toke and tell dispensary 2"],
+  "toke and tell": ["toke tell"],
   "wyze 1": ["wyze1"],
   "wyze 3": ["wyze3"],
   "relief med": ["reliefmed"],
@@ -499,25 +467,18 @@ const DISPENSARY_SPECIAL_ALIASES: Record<string, string[]> = {
   "rootdown 2": ["rootdown"],
   "rootdown 3": ["rootdown"],
   "rootdown 4": ["rootdown"],
-  "cultivated no 1": [
-    "cultivated wellness",
-    "cultivated",
-  ],
-  "cultivated no 2": [
-    "cultivated wellness",
-    "cultivated",
-  ],
-  "cultivated no 3": [
-    "cultivated wellness",
-    "cultivated",
-  ],
-  "the cannabis": [
-    "the cannabis company",
-    "cannabis company",
-  ],
-  "the herbalist": [
-    "herbalist",
-  ],
+  "cultivated no 1": ["cultivated wellness", "cultivated"],
+  "cultivated no 2": ["cultivated wellness", "cultivated"],
+  "cultivated no 3": ["cultivated wellness", "cultivated"],
+  "the cannabis": ["the cannabis company", "cannabis company"],
+  "the herbalist": ["herbalist"],
+}
+
+type MississippiDispensary = {
+  name: string
+  normalized: string
+  normalizedName: string
+  aliases: string[]
 }
 
 export function normalizeDispensaryName(value: string) {
@@ -550,8 +511,14 @@ function buildDispensaryAliases(rawName: string) {
   const aliases = new Set<string>()
 
   const normalized = normalizeDispensaryName(rawName)
-  const withoutLegal = stripDispensaryWords(normalized, DISPENSARY_LEGAL_SUFFIXES)
-  const withoutNoise = stripDispensaryWords(withoutLegal, DISPENSARY_NOISE_WORDS)
+  const withoutLegal = stripDispensaryWords(
+    normalized,
+    DISPENSARY_LEGAL_SUFFIXES
+  )
+  const withoutNoise = stripDispensaryWords(
+    withoutLegal,
+    DISPENSARY_NOISE_WORDS
+  )
 
   if (normalized) aliases.add(normalized)
   if (withoutLegal) aliases.add(withoutLegal)
@@ -575,21 +542,22 @@ function buildDispensaryAliases(rawName: string) {
   return [...aliases]
 }
 
-export const MISSISSIPPI_DISPENSARIES = MISSISSIPPI_DISPENSARY_NAMES_RAW.map((name) => {
-  const normalized = normalizeDispensaryName(name)
-  const normalizedWithoutLegal = stripDispensaryWords(
-    normalized,
-    DISPENSARY_LEGAL_SUFFIXES
-  )
-  const normalizedName = stripDispensaryWords(
-    normalizedWithoutLegal,
-    DISPENSARY_NOISE_WORDS
-  )
+export const MISSISSIPPI_DISPENSARIES: MississippiDispensary[] =
+  MISSISSIPPI_DISPENSARY_NAMES_RAW.map((name) => {
+    const normalized = normalizeDispensaryName(name)
+    const normalizedWithoutLegal = stripDispensaryWords(
+      normalized,
+      DISPENSARY_LEGAL_SUFFIXES
+    )
+    const normalizedName = stripDispensaryWords(
+      normalizedWithoutLegal,
+      DISPENSARY_NOISE_WORDS
+    )
 
-  return {
-    name,
-    normalized,
-    normalizedName,
-    aliases: buildDispensaryAliases(name),
-  }
-})
+    return {
+      name,
+      normalized,
+      normalizedName,
+      aliases: buildDispensaryAliases(name),
+    }
+  })

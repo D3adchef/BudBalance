@@ -216,6 +216,15 @@ function roundToTwo(num: number) {
   return Math.round(num * 100) / 100
 }
 
+function looksLikeSummaryLine(line: string) {
+  return (
+    TOTAL_GRAMS_PATTERN.test(line) ||
+    TOTAL_ITEMS_PATTERN.test(line) ||
+    STARTING_ALLOTMENT_PATTERN.test(line) ||
+    REMAINING_ALLOTMENT_PATTERN.test(line)
+  )
+}
+
 function looksLikeFooterLine(line: string) {
   const lower = line.toLowerCase()
 
@@ -240,6 +249,15 @@ function looksLikeHeaderLine(line: string) {
   )
 }
 
+export function looksLikeReceiptJunk(line: string) {
+  const lower = line.toLowerCase()
+  return RECEIPT_JUNK_WORDS.some((word) => lower.includes(word))
+}
+
+export function looksLikeAddressLine(line: string) {
+  return /\d{1,5}\s+[a-z0-9].*/i.test(line) && line.length < 60
+}
+
 function splitReceiptIntoZones(lines: string[]): ReceiptZones {
   if (lines.length <= 6) {
     return {
@@ -260,7 +278,6 @@ function splitReceiptIntoZones(lines: string[]): ReceiptZones {
   )
 
   let detectedFooterStart = -1
-
   for (let index = totalLines - 1; index >= 0; index -= 1) {
     if (looksLikeFooterLine(lines[index])) {
       detectedFooterStart = index
@@ -270,7 +287,6 @@ function splitReceiptIntoZones(lines: string[]): ReceiptZones {
   }
 
   let detectedHeaderEnd = -1
-
   for (let index = 0; index < Math.min(totalLines, 14); index += 1) {
     if (
       looksLikeHeaderLine(lines[index]) ||
@@ -286,25 +302,13 @@ function splitReceiptIntoZones(lines: string[]): ReceiptZones {
       ? detectedFooterStart
       : fallbackFooterStart
 
-  const headerLines = lines.slice(0, Math.min(headerEnd, totalLines))
-  const itemLines = lines.slice(
-    Math.min(headerEnd, totalLines),
-    Math.max(footerStart, Math.min(headerEnd, totalLines))
-  )
-  const footerLines = lines.slice(
-    Math.max(footerStart, Math.min(headerEnd, totalLines))
-  )
+  const boundedHeaderEnd = Math.min(headerEnd, totalLines)
+  const boundedFooterStart = Math.max(footerStart, boundedHeaderEnd)
 
   return {
-    headerLines,
-    itemLines:
-      itemLines.length > 0
-        ? itemLines
-        : lines.slice(headerLines.length, footerStart),
-    footerLines:
-      footerLines.length > 0
-        ? footerLines
-        : lines.slice(-Math.min(8, totalLines)),
+    headerLines: lines.slice(0, boundedHeaderEnd),
+    itemLines: lines.slice(boundedHeaderEnd, boundedFooterStart),
+    footerLines: lines.slice(boundedFooterStart),
   }
 }
 
@@ -343,7 +347,7 @@ function getTimeCandidatesFromText(value: string) {
   const cleaned = cleanOCRText(value)
   const candidates: ScoredTimeCandidate[] = []
 
-  const addCandidate = (raw: string, score: number) => {
+  function addCandidate(raw: string, score: number) {
     const normalized = normalizeTimeCandidate(raw)
     if (!normalized) return
 
@@ -573,13 +577,12 @@ export function convertTo24HourTime(
   if (!hour || !minute || !period) return ""
 
   let numericHour = Number(hour)
-
   if (Number.isNaN(numericHour)) return ""
 
   if (period === "AM") {
     if (numericHour === 12) numericHour = 0
-  } else {
-    if (numericHour !== 12) numericHour += 12
+  } else if (numericHour !== 12) {
+    numericHour += 12
   }
 
   return `${String(numericHour).padStart(2, "0")}:${minute}`
@@ -676,24 +679,6 @@ export function sanitizeScannedProductName(value: string) {
   return cleaned
 }
 
-export function looksLikeReceiptJunk(line: string) {
-  const lower = line.toLowerCase()
-  return RECEIPT_JUNK_WORDS.some((word) => lower.includes(word))
-}
-
-export function looksLikeAddressLine(line: string) {
-  return /\d{1,5}\s+[a-z0-9].*/i.test(line) && line.length < 60
-}
-
-function looksLikeSummaryLine(line: string) {
-  return (
-    TOTAL_GRAMS_PATTERN.test(line) ||
-    TOTAL_ITEMS_PATTERN.test(line) ||
-    STARTING_ALLOTMENT_PATTERN.test(line) ||
-    REMAINING_ALLOTMENT_PATTERN.test(line)
-  )
-}
-
 function extractDateAndTime(headerLines: string[], rawText: string) {
   let bestDate = ""
   let bestTime = ""
@@ -703,7 +688,6 @@ function extractDateAndTime(headerLines: string[], rawText: string) {
   for (const source of sources) {
     if (!bestDate) {
       const dateCandidates = getDateCandidatesFromText(source)
-
       for (const candidate of dateCandidates) {
         const normalized = normalizeDateForInput(candidate)
         if (normalized) {
@@ -715,7 +699,6 @@ function extractDateAndTime(headerLines: string[], rawText: string) {
 
     if (!bestTime) {
       const timeCandidates = getTimeCandidatesFromText(source)
-
       for (const candidate of timeCandidates) {
         const normalized = normalizeTimeForInput(candidate.normalized)
         if (normalized) {
@@ -862,7 +845,11 @@ function extractDispensary(headerLines: string[]) {
 
   const candidateLines = [...likelyHeaderLines]
 
-  for (let index = 0; index < Math.min(5, likelyHeaderLines.length); index += 1) {
+  for (
+    let index = 0;
+    index < Math.min(5, likelyHeaderLines.length);
+    index += 1
+  ) {
     const combined = normalizeWhitespace(
       [likelyHeaderLines[index], likelyHeaderLines[index + 1]]
         .filter(Boolean)
@@ -903,11 +890,12 @@ function extractDispensary(headerLines: string[]) {
       normalizeDispensaryName(line).split(" ").length <= 5 ? 1 : 0
 
     const weightedPoints = candidate.points + headerBoost + shortLineBoost
-
     const weightedMatchedBy = [...candidate.matchedBy]
+
     if (headerBoost > 0) {
       weightedMatchedBy.push(`header-priority:+${headerBoost}`)
     }
+
     if (shortLineBoost > 0) {
       weightedMatchedBy.push("short-header-line:+1")
     }
@@ -1060,6 +1048,7 @@ function stripGramsFromLine(line: string) {
 
 function looksLikePossibleProductLine(line: string) {
   const normalized = normalizeWhitespace(line)
+
   if (!normalized) return false
   if (!/[a-z]/i.test(normalized)) return false
   if (looksLikeReceiptJunk(normalized)) return false
@@ -1073,6 +1062,7 @@ function looksLikePossibleProductLine(line: string) {
   }
   if (ITEM_BOUNDARY_PATTERN.test(normalized)) return false
   if (ITEM_ID_PATTERN.test(normalized)) return false
+
   return true
 }
 
@@ -1279,7 +1269,6 @@ export function parseReceiptText(rawText: string): ParsedReceipt {
   const footerMetrics = extractFooterMetrics(zones.footerLines)
 
   let parsedItems = extractItemsFromItemZone(zones.itemLines, footerMetrics)
-
   if (parsedItems.length === 0) {
     parsedItems = extractItemsFromLines(lines, footerMetrics)
   }
@@ -1348,7 +1337,6 @@ export function validateParsedReceipt(
     const gramsValue = Number(item.grams)
     return !Number.isNaN(gramsValue) && gramsValue > 28
   })
-
   if (suspiciousItems.length > 0) {
     warnings.push("One or more scanned items have unusually large gram amounts.")
   }
@@ -1357,7 +1345,6 @@ export function validateParsedReceipt(
     const trimmedName = item.productName.trim().toLowerCase()
     return trimmedName === "" || trimmedName === "scanned item"
   })
-
   if (unnamedItems.length > 0) {
     warnings.push("Some item names were unclear and may need manual review.")
   }
@@ -1372,7 +1359,6 @@ export function validateParsedReceipt(
     duplicateKeys.add(key)
     return false
   })
-
   if (duplicateItems.length > 0) {
     warnings.push("Possible duplicate items were detected from OCR noise.")
   }
@@ -1400,7 +1386,6 @@ export function validateParsedReceipt(
   else if (warnings.length >= 1) score -= 1
 
   let confidence: ScanConfidence = "low"
-
   if (score >= 7) {
     confidence = "high"
   } else if (score >= 4) {
