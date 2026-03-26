@@ -198,6 +198,30 @@ function roundToTwo(num: number) {
   return Math.round(num * 100) / 100
 }
 
+function looksLikeFooterLine(line: string) {
+  const lower = line.toLowerCase()
+
+  return (
+    FOOTER_HINT_PATTERN.test(lower) ||
+    looksLikeSummaryLine(lower) ||
+    NON_ITEM_LINE_PATTERN.test(lower)
+  )
+}
+
+function looksLikeHeaderLine(line: string) {
+  const lower = line.toLowerCase()
+
+  return (
+    HEADER_HINT_PATTERN.test(lower) ||
+    PHONE_PATTERN.test(lower) ||
+    DATE_PATTERN.test(lower) ||
+    MONTH_NAME_DATE_PATTERN.test(lower) ||
+    TIME_PATTERN.test(lower) ||
+    OCR_FLEX_TIME_PATTERN.test(lower) ||
+    looksLikeAddressLine(lower)
+  )
+}
+
 function splitReceiptIntoZones(lines: string[]): ReceiptZones {
   if (lines.length <= 6) {
     return {
@@ -208,17 +232,58 @@ function splitReceiptIntoZones(lines: string[]): ReceiptZones {
   }
 
   const totalLines = lines.length
-  const headerCount = Math.min(Math.max(Math.ceil(totalLines * 0.25), 6), 12)
-  const footerCount = Math.min(Math.max(Math.ceil(totalLines * 0.25), 6), 12)
+  const fallbackHeaderCount = Math.min(Math.max(Math.ceil(totalLines * 0.25), 6), 12)
+  const fallbackFooterStart = Math.max(
+    totalLines - Math.min(Math.max(Math.ceil(totalLines * 0.25), 6), 12),
+    fallbackHeaderCount
+  )
 
-  const headerLines = lines.slice(0, headerCount)
-  const footerLines = lines.slice(Math.max(totalLines - footerCount, headerCount))
-  const itemLines = lines.slice(headerCount, Math.max(totalLines - footerCount, headerCount))
+  let detectedFooterStart = -1
+
+  for (let index = totalLines - 1; index >= 0; index -= 1) {
+    if (looksLikeFooterLine(lines[index])) {
+      detectedFooterStart = index
+    } else if (detectedFooterStart !== -1) {
+      break
+    }
+  }
+
+  let detectedHeaderEnd = -1
+
+  for (let index = 0; index < Math.min(totalLines, 14); index += 1) {
+    if (
+      looksLikeHeaderLine(lines[index]) ||
+      HEADER_HINT_PATTERN.test(lines[index].toLowerCase())
+    ) {
+      detectedHeaderEnd = index
+    }
+  }
+
+  const headerEnd = Math.max(detectedHeaderEnd + 1, fallbackHeaderCount)
+  const footerStart =
+    detectedFooterStart !== -1 && detectedFooterStart > headerEnd
+      ? detectedFooterStart
+      : fallbackFooterStart
+
+  const headerLines = lines.slice(0, Math.min(headerEnd, totalLines))
+  const itemLines = lines.slice(
+    Math.min(headerEnd, totalLines),
+    Math.max(footerStart, Math.min(headerEnd, totalLines))
+  )
+  const footerLines = lines.slice(
+    Math.max(footerStart, Math.min(headerEnd, totalLines))
+  )
 
   return {
     headerLines,
-    itemLines: itemLines.length > 0 ? itemLines : lines.slice(headerCount),
-    footerLines,
+    itemLines:
+      itemLines.length > 0
+        ? itemLines
+        : lines.slice(headerLines.length, footerStart),
+    footerLines:
+      footerLines.length > 0
+        ? footerLines
+        : lines.slice(-Math.min(8, totalLines)),
   }
 }
 
