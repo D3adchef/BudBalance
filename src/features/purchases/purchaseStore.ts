@@ -72,6 +72,53 @@ function buildPurchaseDateTime(purchaseDate: string, purchaseTime: string) {
   return `${safeDate}T${safeTime}`
 }
 
+function parsePurchaseDateTime(
+  purchase: Pick<Purchase, "purchaseDateTime" | "purchaseDate" | "purchaseTime">
+) {
+  const resolvedDateTime =
+    purchase.purchaseDateTime ||
+    buildPurchaseDateTime(purchase.purchaseDate, purchase.purchaseTime)
+
+  const parsed = new Date(resolvedDateTime)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function shouldCountTowardAllotment(purchase: Purchase) {
+  const allotment = useAllotmentStore.getState().allotment
+
+  if (!purchase.countsTowardAllotment) return false
+
+  const purchaseDateTime = parsePurchaseDateTime(purchase)
+  if (!purchaseDateTime) return purchase.countsTowardAllotment
+
+  if (
+    allotment.setupMode === "manual" &&
+    allotment.manualSetupCompletedAt
+  ) {
+    const manualAnchorDateTime = new Date(allotment.manualSetupCompletedAt)
+
+    if (
+      !Number.isNaN(manualAnchorDateTime.getTime()) &&
+      purchaseDateTime.getTime() <= manualAnchorDateTime.getTime()
+    ) {
+      return false
+    }
+  }
+
+  if (allotment.correctedAllotmentAt) {
+    const correctedAnchorDateTime = new Date(allotment.correctedAllotmentAt)
+
+    if (
+      !Number.isNaN(correctedAnchorDateTime.getTime()) &&
+      purchaseDateTime.getTime() <= correctedAnchorDateTime.getTime()
+    ) {
+      return false
+    }
+  }
+
+  return true
+}
+
 function normalizePurchase(raw: any): Purchase {
   const normalizedItems: PurchaseItem[] = Array.isArray(raw.items)
     ? raw.items.map((item: any) => ({
@@ -88,7 +135,7 @@ function normalizePurchase(raw: any): Purchase {
     String(raw.purchaseDateTime ?? "").trim() ||
     buildPurchaseDateTime(purchaseDate, purchaseTime)
 
-  return {
+  const basePurchase: Purchase = {
     id: raw.id ?? crypto.randomUUID(),
     purchaseDate,
     purchaseTime,
@@ -102,6 +149,14 @@ function normalizePurchase(raw: any): Purchase {
         ? raw.countsTowardAllotment
         : true,
     entryMode: normalizeEntryMode(raw.entryMode ?? raw.source),
+  }
+
+  const countsTowardAllotment = shouldCountTowardAllotment(basePurchase)
+
+  return {
+    ...basePurchase,
+    countsTowardAllotment,
+    entryMode: countsTowardAllotment ? basePurchase.entryMode : "historical",
   }
 }
 

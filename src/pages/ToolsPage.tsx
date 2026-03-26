@@ -1268,8 +1268,14 @@ export default function ToolsPage() {
             </h2>
 
             <p className="mt-3 text-sm leading-6 text-slate-300">
-              This number should match your real current available allotment.
-              Enter it carefully before saving.
+              Enter your real current available allotment. This will become your
+              new baseline as of right now.
+            </p>
+
+            <p className="mt-2 text-xs leading-5 text-slate-400">
+              Any purchases you add later that are timestamped before this
+              moment will be saved to your history, but they will not subtract
+              from this amount.
             </p>
 
             {adjustAllotmentMessage && (

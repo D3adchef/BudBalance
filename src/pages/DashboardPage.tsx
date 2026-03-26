@@ -77,6 +77,7 @@ export default function DashboardPage() {
   } | null>(null)
   const [isCalendarOpen, setIsCalendarOpen] = useState(false)
   const [isUpcomingReturnsOpen, setIsUpcomingReturnsOpen] = useState(false)
+  const [visibleMonthOffset, setVisibleMonthOffset] = useState<-1 | 0 | 1>(0)
 
   const allotmentLimit = settings.allotmentLimit
 
@@ -141,8 +142,13 @@ export default function DashboardPage() {
       : "0.00"
 
   const today = new Date()
-  const currentYear = today.getFullYear()
-  const currentMonth = today.getMonth()
+  const visibleDate = new Date(
+    today.getFullYear(),
+    today.getMonth() + visibleMonthOffset,
+    1
+  )
+  const currentYear = visibleDate.getFullYear()
+  const currentMonth = visibleDate.getMonth()
   const daysInMonth = getDaysInMonth(currentYear, currentMonth)
   const firstDay = getFirstDayOfMonth(currentYear, currentMonth)
 
@@ -387,7 +393,7 @@ export default function DashboardPage() {
                 Calendar View
               </p>
               <p className="mt-1 text-xs text-slate-400">
-                {getMonthName(today)}
+                {getMonthName(visibleDate)}
               </p>
             </div>
 
@@ -397,7 +403,53 @@ export default function DashboardPage() {
           </button>
 
           {isCalendarOpen && (
-            <div className="mt-3 grid grid-cols-7 gap-1">{calendarCells}</div>
+            <div className="mt-3">
+              <div className="mb-3 flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVisibleMonthOffset((current) =>
+                      current > -1 ? ((current - 1) as -1 | 0 | 1) : current
+                    )
+                    setActiveBubble(null)
+                  }}
+                  disabled={visibleMonthOffset === -1}
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-slate-900 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  ←
+                </button>
+
+                <p className="text-sm font-semibold text-white">
+                  {getMonthName(visibleDate)}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVisibleMonthOffset((current) =>
+                      current < 1 ? ((current + 1) as -1 | 0 | 1) : current
+                    )
+                    setActiveBubble(null)
+                  }}
+                  disabled={visibleMonthOffset === 1}
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-slate-900 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  →
+                </button>
+              </div>
+
+              <div className="mb-2 grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                <span>Sun</span>
+                <span>Mon</span>
+                <span>Tue</span>
+                <span>Wed</span>
+                <span>Thu</span>
+                <span>Fri</span>
+                <span>Sat</span>
+              </div>
+
+              <div className="grid grid-cols-7 gap-1">{calendarCells}</div>
+            </div>
           )}
         </section>
 

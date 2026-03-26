@@ -51,11 +51,23 @@ export type ScanValidationResult = {
 const MONTH_NAME_DATE_PATTERN =
   /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2},?\s+\d{4}\b/i
 
+const MONTH_NAME_DATE_WITH_AT_TIME_PATTERN =
+  /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2},?\s+\d{4}\s+at\s+\d{1,2}[:.;]\d{2}(?:\s?(?:AM|PM|am|pm))?\b/i
+
 const TIME_WITH_OPTIONAL_SECONDS_PATTERN =
   /\b(\d{1,2}:\d{2}(?::\d{2})?\s?(?:AM|PM|am|pm)?|\d{1,2}:\d{2})\b/
 
 const TOTAL_GRAMS_PATTERN =
   /\btotal\s+grams?\s*[:\-]?\s*(\d*\.?\d+)\b/i
+
+const TOTAL_ITEMS_PATTERN =
+  /\btotal\s+items?\s*[:\-]?\s*(\d+)\b/i
+
+const STARTING_ALLOTMENT_PATTERN =
+  /\bstarting\s+allotment\s*[:\-]?\s*(\d*\.?\d+)\s*g?\b/i
+
+const REMAINING_ALLOTMENT_PATTERN =
+  /\bremaining\s+allotment\s*[:\-]?\s*(\d*\.?\d+)\s*g?\b/i
 
 const PAREN_GRAMS_PATTERN =
   /\((\d*\.?\d+)\s?g\)/i
@@ -75,12 +87,35 @@ const COMPACT_TIME_WITH_MERIDIEM_PATTERN =
 const SPACED_TIME_WITH_MERIDIEM_PATTERN =
   /\b\d{1,2}\s+\d{2}\s*(?:AM|PM|am|pm)\b/
 
+const HEADER_HINT_PATTERN =
+  /\b(dispensary|cannabis|wellness|pharmacy|rx|patient|register|cashier|order|invoice|pickup)\b/i
+
+const FOOTER_HINT_PATTERN =
+  /\b(total|subtotal|tax|payment|cash|credit|debit|change|starting allotment|remaining allotment|total grams|total items|thank you)\b/i
+
+const NON_ITEM_LINE_PATTERN =
+  /\b(subtotal|total|tax|discount|payment|cash|debit|credit|change|loyalty|points|register|cashier|patient|order|invoice|receipt|sales tax|state tax|batch|sku|unit price|price|budtender|starting allotment|remaining allotment|total items|total grams|thank you|powered by)\b/i
+
 type DispensaryMatch = {
   name: string
   normalizedName: string
   points: number
   confidence: "high" | "medium" | "low"
   matchedBy: string[]
+}
+
+type ReceiptZones = {
+  headerLines: string[]
+  itemLines: string[]
+  footerLines: string[]
+}
+
+type FooterMetrics = {
+  totalGrams: string
+  totalItems: string
+  startingAllotment: string
+  remainingAllotment: string
+  inferredUsedGrams: string
 }
 
 function normalizeWhitespace(value: string) {
@@ -93,8 +128,9 @@ function cleanOCRText(value: string) {
       .replace(/[“”‘’`´]/g, "")
       .replace(/[–—]/g, "-")
       .replace(/[|]/g, " ")
-      .replace(/\b(\d)\s*[:.;]\s*(\d{2})(\s*[AaPp][Mm])\b/g, "$1:$2$3")
-      .replace(/\b(\d)\s*[:.;]\s*(\d{2})\s*[:.;]\s*(\d{2})\b/g, "$1:$2:$3")
+      .replace(/(?<=\b\d)\s*[:.;]\s*(?=\d{2}\b)/g, ":")
+      .replace(/(?<=\b\d)\s*[:.;]\s*(?=\d{2}\s*[AaPp][Mm]\b)/g, ":")
+      .replace(/(?<=\b\d)\s*[:.;]\s*(?=\d{2}\s*[:.;]\s*\d{2}\b)/g, ":")
       .replace(/\b(\d)\s*[Oo]\b/g, "$10")
       .replace(/\b(am|pm)\b/gi, (match) => match.toUpperCase())
       .replace(/[^\w\s:/\-.(),]/g, " ")
@@ -112,7 +148,7 @@ function normalizeDateCandidate(value: string) {
   return normalizeWhitespace(
     normalizeOcrDigitsNearNumbers(value)
       .replace(/\s*([\/\-.])\s*/g, "$1")
-      .replace(/,/g, ", ")
+      .replace(/,\s*/g, ", ")
       .replace(/\s{2,}/g, " ")
   )
 }
@@ -142,24 +178,75 @@ function normalizeTimeCandidate(value: string) {
     cleaned = `${noSpaceMeridiemMatch[1]} ${noSpaceMeridiemMatch[2].toUpperCase()}`
   }
 
+  const twentyFourHourPlusMeridiemMatch = cleaned.match(/^(\d{2}):(\d{2})\s*(AM|PM)$/i)
+  if (twentyFourHourPlusMeridiemMatch) {
+    const hour = Number(twentyFourHourPlusMeridiemMatch[1])
+    const minute = twentyFourHourPlusMeridiemMatch[2]
+    const period = twentyFourHourPlusMeridiemMatch[3].toUpperCase()
+
+    if (hour > 12 && hour <= 23) {
+      let displayHour = hour % 12
+      if (displayHour === 0) displayHour = 12
+      cleaned = `${displayHour}:${minute} ${period}`
+    }
+  }
+
   return cleaned
+}
+
+function roundToTwo(num: number) {
+  return Math.round(num * 100) / 100
+}
+
+function splitReceiptIntoZones(lines: string[]): ReceiptZones {
+  if (lines.length <= 6) {
+    return {
+      headerLines: lines.slice(0, Math.min(3, lines.length)),
+      itemLines: lines,
+      footerLines: lines.slice(-Math.min(3, lines.length)),
+    }
+  }
+
+  const totalLines = lines.length
+  const headerCount = Math.min(Math.max(Math.ceil(totalLines * 0.25), 6), 12)
+  const footerCount = Math.min(Math.max(Math.ceil(totalLines * 0.25), 6), 12)
+
+  const headerLines = lines.slice(0, headerCount)
+  const footerLines = lines.slice(Math.max(totalLines - footerCount, headerCount))
+  const itemLines = lines.slice(headerCount, Math.max(totalLines - footerCount, headerCount))
+
+  return {
+    headerLines,
+    itemLines: itemLines.length > 0 ? itemLines : lines.slice(headerCount),
+    footerLines,
+  }
 }
 
 function getDateCandidatesFromText(value: string) {
   const cleaned = cleanOCRText(value)
   const candidates = new Set<string>()
 
-  const monthNameMatches = cleaned.match(new RegExp(MONTH_NAME_DATE_PATTERN, "gi")) || []
+  const monthDateWithTimeMatches =
+    cleaned.match(new RegExp(MONTH_NAME_DATE_WITH_AT_TIME_PATTERN, "gi")) || []
+  for (const match of monthDateWithTimeMatches) {
+    const justDate = match.match(new RegExp(MONTH_NAME_DATE_PATTERN, "i"))?.[0]
+    if (justDate) candidates.add(normalizeDateCandidate(justDate))
+  }
+
+  const monthNameMatches =
+    cleaned.match(new RegExp(MONTH_NAME_DATE_PATTERN, "gi")) || []
   for (const match of monthNameMatches) {
     candidates.add(normalizeDateCandidate(match))
   }
 
-  const numericMatches = cleaned.match(new RegExp(NUMERIC_DATE_CANDIDATE_PATTERN, "g")) || []
+  const numericMatches =
+    cleaned.match(new RegExp(NUMERIC_DATE_CANDIDATE_PATTERN, "g")) || []
   for (const match of numericMatches) {
     candidates.add(normalizeDateCandidate(match))
   }
 
-  const directDateMatches = cleaned.match(new RegExp(DATE_PATTERN, "g")) || []
+  const directDateMatches =
+    cleaned.match(new RegExp(DATE_PATTERN, "g")) || []
   for (const match of directDateMatches) {
     candidates.add(normalizeDateCandidate(match))
   }
@@ -171,7 +258,20 @@ function getTimeCandidatesFromText(value: string) {
   const cleaned = cleanOCRText(value)
   const candidates = new Set<string>()
 
-  const flexMatches = cleaned.match(new RegExp(OCR_FLEX_TIME_PATTERN, "gi")) || []
+  const inlineMonthDateTimeMatch = cleaned.match(
+    new RegExp(MONTH_NAME_DATE_WITH_AT_TIME_PATTERN, "i")
+  )
+  if (inlineMonthDateTimeMatch?.[0]) {
+    const timeInside = inlineMonthDateTimeMatch[0].match(
+      /\d{1,2}[:.;]\d{2}(?:\s?(?:AM|PM|am|pm))?/i
+    )?.[0]
+    if (timeInside) {
+      candidates.add(normalizeTimeCandidate(timeInside))
+    }
+  }
+
+  const flexMatches =
+    cleaned.match(new RegExp(OCR_FLEX_TIME_PATTERN, "gi")) || []
   for (const match of flexMatches) {
     candidates.add(normalizeTimeCandidate(match))
   }
@@ -197,15 +297,14 @@ function getTimeCandidatesFromText(value: string) {
   return [...candidates]
 }
 
-function buildPriorityDateTimeSources(lines: string[], rawText: string) {
+function buildPriorityDateTimeSources(headerLines: string[], rawText: string) {
   const sources: string[] = []
-  const headerLines = lines.slice(0, 20)
 
-  for (const line of headerLines.slice(0, 8)) {
+  for (const line of headerLines.slice(0, 10)) {
     sources.push(line)
   }
 
-  for (let index = 0; index < Math.min(6, headerLines.length); index += 1) {
+  for (let index = 0; index < Math.min(10, headerLines.length); index += 1) {
     const combinedTwo = normalizeWhitespace(
       [headerLines[index], headerLines[index + 1]].filter(Boolean).join(" ")
     )
@@ -219,13 +318,13 @@ function buildPriorityDateTimeSources(lines: string[], rawText: string) {
     if (combinedThree) sources.push(combinedThree)
   }
 
-  for (const line of headerLines.slice(8)) {
-    sources.push(line)
-  }
-
   sources.push(rawText)
 
-  return [...new Set(sources.map((source) => normalizeWhitespace(source)).filter(Boolean))]
+  return [
+    ...new Set(
+      sources.map((source) => normalizeWhitespace(source)).filter(Boolean)
+    ),
+  ]
 }
 
 export function normalizeDateForInput(value: string) {
@@ -246,6 +345,15 @@ export function normalizeDateForInput(value: string) {
     const year = dashMatch[1]
     const month = dashMatch[2].padStart(2, "0")
     const day = dashMatch[3].padStart(2, "0")
+
+    return `${year}-${month}-${day}`
+  }
+
+  const dottedIsoMatch = trimmed.match(/^(\d{4})\.(\d{1,2})\.(\d{1,2})$/)
+  if (dottedIsoMatch) {
+    const year = dottedIsoMatch[1]
+    const month = dottedIsoMatch[2].padStart(2, "0")
+    const day = dottedIsoMatch[3].padStart(2, "0")
 
     return `${year}-${month}-${day}`
   }
@@ -305,11 +413,19 @@ export function normalizeTimeForInput(value: string) {
     /^(\d{1,2}):(\d{2})\s*(am|pm)$/i
   )
   if (weirdTwentyFourHourPlusMeridiem) {
-    const hour = Number(weirdTwentyFourHourPlusMeridiem[1])
-    const minute = Number(weirdTwentyFourHourPlusMeridiem[2])
+    let hour = Number(weirdTwentyFourHourPlusMeridiem[1])
+    const minute = weirdTwentyFourHourPlusMeridiem[2]
+    const meridiem = weirdTwentyFourHourPlusMeridiem[3].toLowerCase()
 
-    if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
-      return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
+    if (hour >= 0 && hour <= 23 && Number(minute) >= 0 && Number(minute) <= 59) {
+      if (hour > 12) {
+        return `${String(hour).padStart(2, "0")}:${minute}`
+      }
+
+      if (meridiem === "pm" && hour !== 12) hour += 12
+      if (meridiem === "am" && hour === 12) hour = 0
+
+      return `${String(hour).padStart(2, "0")}:${minute}`
     }
   }
 
@@ -317,7 +433,9 @@ export function normalizeTimeForInput(value: string) {
   if (compactMeridiem) {
     const digits = compactMeridiem[1]
     const meridiem = compactMeridiem[2].toLowerCase()
-    const hour = Number(digits.length === 3 ? digits.slice(0, 1) : digits.slice(0, 2))
+    const hour = Number(
+      digits.length === 3 ? digits.slice(0, 1) : digits.slice(0, 2)
+    )
     const minute = Number(digits.slice(-2))
 
     if (hour >= 1 && hour <= 12 && minute >= 0 && minute <= 59) {
@@ -433,6 +551,7 @@ export function sanitizeScannedProductName(value: string) {
   }
 
   cleaned = cleaned
+    .replace(/\b(weight|batch|sku|unit|price|patient|register|cashier)\b/gi, "")
     .replace(/\s{2,}/g, " ")
     .replace(/[-•]+/g, " ")
     .replace(/\(\s*\)/g, "")
@@ -450,11 +569,20 @@ export function looksLikeAddressLine(line: string) {
   return /\d{1,5}\s+[a-z0-9].*/i.test(line) && line.length < 60
 }
 
-function extractDateAndTime(lines: string[], rawText: string) {
+function looksLikeSummaryLine(line: string) {
+  return (
+    TOTAL_GRAMS_PATTERN.test(line) ||
+    TOTAL_ITEMS_PATTERN.test(line) ||
+    STARTING_ALLOTMENT_PATTERN.test(line) ||
+    REMAINING_ALLOTMENT_PATTERN.test(line)
+  )
+}
+
+function extractDateAndTime(headerLines: string[], rawText: string) {
   let bestDate = ""
   let bestTime = ""
 
-  const sources = buildPriorityDateTimeSources(lines, rawText)
+  const sources = buildPriorityDateTimeSources(headerLines, rawText)
 
   for (const source of sources) {
     if (!bestDate) {
@@ -596,15 +724,15 @@ function scoreDispensaryCandidate(line: string, fullText: string) {
   return bestMatch
 }
 
-function extractDispensary(lines: string[], rawText: string) {
-  const likelyHeaderLines = lines.slice(0, 14)
+function extractDispensary(headerLines: string[], rawText: string) {
+  const likelyHeaderLines = headerLines.slice(0, 16)
 
   let bestMatch: DispensaryMatch | null = null
   let bestWeightedPoints = -1
 
   const candidateLines = [...likelyHeaderLines]
 
-  for (let index = 0; index < Math.min(5, likelyHeaderLines.length); index += 1) {
+  for (let index = 0; index < Math.min(6, likelyHeaderLines.length); index += 1) {
     const combined = normalizeWhitespace(
       [likelyHeaderLines[index], likelyHeaderLines[index + 1]]
         .filter(Boolean)
@@ -633,12 +761,21 @@ function extractDispensary(lines: string[], rawText: string) {
 
     const isOriginalTopLine = index < likelyHeaderLines.length
     const headerBoost =
-      isOriginalTopLine && index <= 2 ? 2 : isOriginalTopLine && index <= 5 ? 1 : 0
+      isOriginalTopLine && index <= 2
+        ? 3
+        : isOriginalTopLine && index <= 5
+          ? 2
+          : isOriginalTopLine && HEADER_HINT_PATTERN.test(line)
+            ? 1
+            : 0
 
     const weightedPoints = candidate.points + headerBoost
 
     if (headerBoost > 0) {
-      candidate.matchedBy = [...candidate.matchedBy, `header-priority:+${headerBoost}`]
+      candidate.matchedBy = [
+        ...candidate.matchedBy,
+        `header-priority:+${headerBoost}`,
+      ]
     }
 
     if (!bestMatch || weightedPoints > bestWeightedPoints) {
@@ -668,74 +805,169 @@ function extractDispensary(lines: string[], rawText: string) {
   }
 }
 
-function extractTotalGrams(lines: string[]) {
-  for (const line of lines) {
-    const match = line.match(TOTAL_GRAMS_PATTERN)
-    if (match?.[1]) return match[1]
+function extractFooterMetrics(footerLines: string[]): FooterMetrics {
+  let totalGrams = ""
+  let totalItems = ""
+  let startingAllotment = ""
+  let remainingAllotment = ""
+
+  for (const line of footerLines) {
+    if (!totalGrams) {
+      const match = line.match(TOTAL_GRAMS_PATTERN)
+      if (match?.[1]) totalGrams = match[1]
+    }
+
+    if (!totalItems) {
+      const match = line.match(TOTAL_ITEMS_PATTERN)
+      if (match?.[1]) totalItems = match[1]
+    }
+
+    if (!startingAllotment) {
+      const match = line.match(STARTING_ALLOTMENT_PATTERN)
+      if (match?.[1]) startingAllotment = match[1]
+    }
+
+    if (!remainingAllotment) {
+      const match = line.match(REMAINING_ALLOTMENT_PATTERN)
+      if (match?.[1]) remainingAllotment = match[1]
+    }
   }
 
-  return ""
+  let inferredUsedGrams = ""
+  const starting = Number(startingAllotment)
+  const remaining = Number(remainingAllotment)
+
+  if (
+    !Number.isNaN(starting) &&
+    !Number.isNaN(remaining) &&
+    starting >= remaining
+  ) {
+    inferredUsedGrams = String(roundToTwo(starting - remaining))
+  }
+
+  return {
+    totalGrams,
+    totalItems,
+    startingAllotment,
+    remainingAllotment,
+    inferredUsedGrams,
+  }
 }
 
-export function extractItemsFromLines(lines: string[]) {
+function scoreItemLineCandidate(line: string, zoneWeight = 0) {
+  let points = zoneWeight
+  const lower = line.toLowerCase()
+
+  if (!line.trim()) return -999
+  if (looksLikeReceiptJunk(line)) return -999
+  if (looksLikeAddressLine(line)) return -999
+  if (looksLikeSummaryLine(line)) return -999
+  if (NON_ITEM_LINE_PATTERN.test(line)) return -999
+  if (PHONE_PATTERN.test(line)) return -999
+  if (DATE_PATTERN.test(line)) return -999
+  if (MONTH_NAME_DATE_PATTERN.test(line)) return -999
+  if (TIME_PATTERN.test(line) || OCR_FLEX_TIME_PATTERN.test(line)) return -999
+
+  if (/[a-z]/i.test(line)) points += 2
+  if (/[|]/.test(line)) points += 2
+  if (PAREN_GRAMS_PATTERN.test(line)) points += 4
+  if (LOOSE_GRAMS_PATTERN.test(line)) points += 4
+  if (GRAMS_INLINE_LEADING_PATTERN.test(line)) points += 4
+  if (GRAMS_INLINE_TRAILING_PATTERN.test(line)) points += 4
+  if (/\b\d*\.?\d+\s?g\b/i.test(line)) points += 3
+
+  if (
+    PRE_ROLL_KEYWORDS.some((keyword) => lower.includes(keyword)) ||
+    EDIBLE_KEYWORDS.some((keyword) => lower.includes(keyword)) ||
+    VAPE_KEYWORDS.some((keyword) => lower.includes(keyword)) ||
+    CONCENTRATE_KEYWORDS.some((keyword) => lower.includes(keyword)) ||
+    FLOWER_KEYWORDS.some((keyword) => lower.includes(keyword))
+  ) {
+    points += 2
+  }
+
+  if (/\$/.test(line)) points -= 2
+  if (/\bmg\b/i.test(line) && !/\bg\b/i.test(line)) points -= 2
+  if (/^\d+(\.\d+)?$/.test(line.trim())) points -= 6
+  if (lower.length < 4) points -= 3
+
+  return points
+}
+
+function parseSingleItemLine(currentLine: string, nextLine: string) {
+  const inlineTrailingMatch = currentLine.match(GRAMS_INLINE_TRAILING_PATTERN)
+  const inlineLeadingMatch = currentLine.match(GRAMS_INLINE_LEADING_PATTERN)
+  const parenGramsMatch = currentLine.match(PAREN_GRAMS_PATTERN)
+  const looseGramsMatch = currentLine.match(LOOSE_GRAMS_PATTERN)
+
+  let grams = ""
+  let productName = ""
+  let consumedNext = false
+
+  if (inlineTrailingMatch) {
+    productName = sanitizeScannedProductName(inlineTrailingMatch[1] || "")
+    grams = inlineTrailingMatch[2] || ""
+  } else if (inlineLeadingMatch) {
+    grams = inlineLeadingMatch[1] || ""
+    productName = sanitizeScannedProductName(inlineLeadingMatch[2] || "")
+  } else if (parenGramsMatch) {
+    grams = parenGramsMatch[1] || ""
+    productName = sanitizeScannedProductName(
+      currentLine.replace(parenGramsMatch[0], "")
+    )
+  } else if (looseGramsMatch) {
+    grams = looseGramsMatch[1] || ""
+    productName = sanitizeScannedProductName(
+      currentLine.replace(looseGramsMatch[0], "")
+    )
+  } else {
+    const nextLineGramsMatch =
+      nextLine.match(GRAMS_ONLY_PATTERN) || nextLine.match(PAREN_GRAMS_PATTERN)
+
+    const currentLineLooksLikeName =
+      /[a-z]/i.test(currentLine) &&
+      !looksLikeReceiptJunk(currentLine) &&
+      !looksLikeAddressLine(currentLine) &&
+      !looksLikeSummaryLine(currentLine) &&
+      !NON_ITEM_LINE_PATTERN.test(currentLine) &&
+      !/\b(am|pm)\b/i.test(currentLine) &&
+      !DATE_PATTERN.test(currentLine) &&
+      !MONTH_NAME_DATE_PATTERN.test(currentLine)
+
+    if (currentLineLooksLikeName && nextLineGramsMatch) {
+      productName = sanitizeScannedProductName(currentLine)
+      grams = nextLineGramsMatch[1] || ""
+      consumedNext = true
+    }
+  }
+
+  return { grams, productName, consumedNext }
+}
+
+function extractItemsFromItemZone(itemLines: string[], footerMetrics: FooterMetrics) {
   const parsedItems: DraftItem[] = []
   const seen = new Set<string>()
 
-  for (let index = 0; index < lines.length; index += 1) {
-    const currentLine = normalizeWhitespace(lines[index])
-    const nextLine = normalizeWhitespace(lines[index + 1] || "")
+  for (let index = 0; index < itemLines.length; index += 1) {
+    const currentLine = normalizeWhitespace(itemLines[index])
+    const nextLine = normalizeWhitespace(itemLines[index + 1] || "")
 
-    if (!currentLine || looksLikeReceiptJunk(currentLine)) continue
-    if (TOTAL_GRAMS_PATTERN.test(currentLine)) continue
+    const currentScore = scoreItemLineCandidate(currentLine, 2)
+    const nextScore = scoreItemLineCandidate(nextLine, 1)
 
-    const inlineTrailingMatch = currentLine.match(GRAMS_INLINE_TRAILING_PATTERN)
-    const inlineLeadingMatch = currentLine.match(GRAMS_INLINE_LEADING_PATTERN)
-    const parenGramsMatch = currentLine.match(PAREN_GRAMS_PATTERN)
-    const looseGramsMatch = currentLine.match(LOOSE_GRAMS_PATTERN)
+    if (currentScore < 2) continue
 
-    let grams = ""
-    let productName = ""
-
-    if (inlineTrailingMatch) {
-      productName = sanitizeScannedProductName(inlineTrailingMatch[1] || "")
-      grams = inlineTrailingMatch[2] || ""
-    } else if (inlineLeadingMatch) {
-      grams = inlineLeadingMatch[1] || ""
-      productName = sanitizeScannedProductName(inlineLeadingMatch[2] || "")
-    } else if (parenGramsMatch) {
-      grams = parenGramsMatch[1] || ""
-      productName = sanitizeScannedProductName(
-        currentLine.replace(parenGramsMatch[0], "")
-      )
-    } else if (looseGramsMatch) {
-      grams = looseGramsMatch[1] || ""
-      productName = sanitizeScannedProductName(
-        currentLine.replace(looseGramsMatch[0], "")
-      )
-    } else {
-      const nextLineGramsMatch =
-        nextLine.match(GRAMS_ONLY_PATTERN) || nextLine.match(PAREN_GRAMS_PATTERN)
-
-      const currentLineLooksLikeName =
-        /[a-z]/i.test(currentLine) &&
-        !looksLikeReceiptJunk(currentLine) &&
-        !looksLikeAddressLine(currentLine) &&
-        !/\b(am|pm)\b/i.test(currentLine) &&
-        !DATE_PATTERN.test(currentLine) &&
-        !MONTH_NAME_DATE_PATTERN.test(currentLine) &&
-        !TOTAL_GRAMS_PATTERN.test(currentLine)
-
-      if (currentLineLooksLikeName && nextLineGramsMatch) {
-        productName = sanitizeScannedProductName(currentLine)
-        grams = nextLineGramsMatch[1] || ""
-        index += 1
-      }
-    }
+    const { grams, productName, consumedNext } = parseSingleItemLine(
+      currentLine,
+      nextLine
+    )
 
     if (!grams) continue
 
     const numericGrams = Number(grams)
-    if (Number.isNaN(numericGrams) || numericGrams <= 0) continue
+    if (Number.isNaN(numericGrams) || numericGrams <= 0 || numericGrams > 28) {
+      continue
+    }
 
     const resolvedName = productName || "Scanned Item"
     const key = `${resolvedName.toLowerCase()}|${grams}`
@@ -749,9 +981,109 @@ export function extractItemsFromLines(lines: string[]) {
       category: guessCategory(resolvedName),
       grams,
     })
+
+    if (consumedNext && nextScore >= 0) {
+      index += 1
+    }
+  }
+
+  const footerItemCount = Number(footerMetrics.totalItems)
+  if (
+    !Number.isNaN(footerItemCount) &&
+    footerItemCount > 0 &&
+    parsedItems.length > footerItemCount
+  ) {
+    return parsedItems.slice(0, footerItemCount)
   }
 
   return parsedItems
+}
+
+function extractItemsFromLines(lines: string[], footerMetrics: FooterMetrics) {
+  const parsedItems: DraftItem[] = []
+  const seen = new Set<string>()
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const currentLine = normalizeWhitespace(lines[index])
+    const nextLine = normalizeWhitespace(lines[index + 1] || "")
+
+    if (!currentLine || looksLikeReceiptJunk(currentLine)) continue
+    if (looksLikeSummaryLine(currentLine)) continue
+    if (NON_ITEM_LINE_PATTERN.test(currentLine)) continue
+
+    const { grams, productName, consumedNext } = parseSingleItemLine(
+      currentLine,
+      nextLine
+    )
+
+    if (!grams) continue
+
+    const numericGrams = Number(grams)
+    if (Number.isNaN(numericGrams) || numericGrams <= 0 || numericGrams > 28) {
+      continue
+    }
+
+    const resolvedName = productName || "Scanned Item"
+    const key = `${resolvedName.toLowerCase()}|${grams}`
+
+    if (seen.has(key)) continue
+    seen.add(key)
+
+    parsedItems.push({
+      id: crypto.randomUUID(),
+      productName: resolvedName,
+      category: guessCategory(resolvedName),
+      grams,
+    })
+
+    if (consumedNext) {
+      index += 1
+    }
+  }
+
+  const footerItemCount = Number(footerMetrics.totalItems)
+  if (
+    !Number.isNaN(footerItemCount) &&
+    footerItemCount > 0 &&
+    parsedItems.length > footerItemCount
+  ) {
+    return parsedItems.slice(0, footerItemCount)
+  }
+
+  return parsedItems
+}
+
+function resolveBestFallbackItemSet(
+  parsedItems: DraftItem[],
+  footerMetrics: FooterMetrics
+) {
+  if (parsedItems.length > 0) return parsedItems
+
+  const footerTotal = Number(footerMetrics.totalGrams)
+  if (!Number.isNaN(footerTotal) && footerTotal > 0) {
+    return [
+      {
+        id: crypto.randomUUID(),
+        productName: "Receipt Total",
+        category: "flower",
+        grams: String(roundToTwo(footerTotal)),
+      },
+    ]
+  }
+
+  const inferredUsed = Number(footerMetrics.inferredUsedGrams)
+  if (!Number.isNaN(inferredUsed) && inferredUsed > 0) {
+    return [
+      {
+        id: crypto.randomUUID(),
+        productName: "Receipt Total",
+        category: "flower",
+        grams: String(roundToTwo(inferredUsed)),
+      },
+    ]
+  }
+
+  return [createEmptyItem()]
 }
 
 export function parseReceiptText(rawText: string): ParsedReceipt {
@@ -761,30 +1093,28 @@ export function parseReceiptText(rawText: string): ParsedReceipt {
     .filter(Boolean)
 
   const lines = rawLines.filter((line) => line.length >= 2)
+  const zones = splitReceiptIntoZones(lines)
 
-  const { purchaseDate, purchaseTime } = extractDateAndTime(lines, rawText)
-  const dispensaryResult = extractDispensary(lines, rawText)
+  const { purchaseDate, purchaseTime } = extractDateAndTime(
+    zones.headerLines,
+    rawText
+  )
+  const dispensaryResult = extractDispensary(zones.headerLines, rawText)
+  const footerMetrics = extractFooterMetrics(zones.footerLines)
 
-  let parsedItems = extractItemsFromLines(lines)
+  let parsedItems = extractItemsFromItemZone(zones.itemLines, footerMetrics)
 
-  const totalGrams = extractTotalGrams(lines)
-
-  if (parsedItems.length === 0 && totalGrams && Number(totalGrams) > 0) {
-    parsedItems = [
-      {
-        id: crypto.randomUUID(),
-        productName: "Receipt Total",
-        category: "flower",
-        grams: totalGrams,
-      },
-    ]
+  if (parsedItems.length === 0) {
+    parsedItems = extractItemsFromLines(lines, footerMetrics)
   }
+
+  parsedItems = resolveBestFallbackItemSet(parsedItems, footerMetrics)
 
   return {
     dispensary: dispensaryResult.dispensary,
     purchaseDate,
     purchaseTime,
-    items: parsedItems.length > 0 ? parsedItems : [createEmptyItem()],
+    items: parsedItems,
     rawText,
     dispensaryConfidence: dispensaryResult.dispensaryConfidence,
     dispensaryPoints: dispensaryResult.dispensaryPoints,

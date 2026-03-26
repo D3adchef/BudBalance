@@ -4,6 +4,15 @@ function isOpenCvReady() {
   return Boolean(cv && typeof cv.imread === "function")
 }
 
+function computeWhitePixelRatio(mat: any) {
+  const nonZero = cv.countNonZero(mat)
+  return nonZero / (mat.rows * mat.cols)
+}
+
+function isReasonableBinaryRatio(ratio: number) {
+  return ratio > 0.18 && ratio < 0.96
+}
+
 export function preprocessCanvasImage(canvas: HTMLCanvasElement) {
   if (!isOpenCvReady()) return
 
@@ -12,8 +21,10 @@ export function preprocessCanvasImage(canvas: HTMLCanvasElement) {
   const normalized = new cv.Mat()
   const denoised = new cv.Mat()
   const sharpened = new cv.Mat()
-  const binary = new cv.Mat()
+  const binaryOtsu = new cv.Mat()
   const adaptive = new cv.Mat()
+  const morphOtsu = new cv.Mat()
+  const morphAdaptive = new cv.Mat()
 
   try {
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0)
@@ -47,7 +58,7 @@ export function preprocessCanvasImage(canvas: HTMLCanvasElement) {
 
     cv.threshold(
       sharpened,
-      binary,
+      binaryOtsu,
       0,
       255,
       cv.THRESH_BINARY + cv.THRESH_OTSU
@@ -63,28 +74,73 @@ export function preprocessCanvasImage(canvas: HTMLCanvasElement) {
       8
     )
 
-    const binaryNonZero = cv.countNonZero(binary)
-    const adaptiveNonZero = cv.countNonZero(adaptive)
+    const morphKernel = cv.getStructuringElement(
+      cv.MORPH_RECT,
+      new cv.Size(2, 2)
+    )
 
-    const binaryRatio = binaryNonZero / (binary.rows * binary.cols)
-    const adaptiveRatio = adaptiveNonZero / (adaptive.rows * adaptive.cols)
+    cv.morphologyEx(
+      binaryOtsu,
+      morphOtsu,
+      cv.MORPH_OPEN,
+      morphKernel,
+      new cv.Point(-1, -1),
+      1
+    )
 
-    const useAdaptive =
-      adaptiveRatio > 0.2 &&
-      adaptiveRatio < 0.95 &&
-      (binaryRatio <= 0.12 || binaryRatio >= 0.98)
+    cv.morphologyEx(
+      adaptive,
+      morphAdaptive,
+      cv.MORPH_OPEN,
+      morphKernel,
+      new cv.Point(-1, -1),
+      1
+    )
 
-    cv.imshow(canvas, useAdaptive ? adaptive : binary)
+    const otsuRatio = computeWhitePixelRatio(binaryOtsu)
+    const adaptiveRatio = computeWhitePixelRatio(adaptive)
+    const morphOtsuRatio = computeWhitePixelRatio(morphOtsu)
+    const morphAdaptiveRatio = computeWhitePixelRatio(morphAdaptive)
+
+    let output = binaryOtsu
+
+    if (
+      isReasonableBinaryRatio(morphAdaptiveRatio) &&
+      !isReasonableBinaryRatio(morphOtsuRatio)
+    ) {
+      output = morphAdaptive
+    } else if (
+      isReasonableBinaryRatio(morphOtsuRatio) &&
+      !isReasonableBinaryRatio(morphAdaptiveRatio)
+    ) {
+      output = morphOtsu
+    } else if (
+      isReasonableBinaryRatio(adaptiveRatio) &&
+      (otsuRatio <= 0.12 || otsuRatio >= 0.98)
+    ) {
+      output = morphAdaptiveRatio >= 0.15 ? morphAdaptive : adaptive
+    } else if (isReasonableBinaryRatio(morphOtsuRatio)) {
+      output = morphOtsu
+    } else if (isReasonableBinaryRatio(morphAdaptiveRatio)) {
+      output = morphAdaptive
+    } else if (isReasonableBinaryRatio(adaptiveRatio)) {
+      output = adaptive
+    }
+
+    cv.imshow(canvas, output)
 
     sharpenKernel.delete()
+    morphKernel.delete()
   } finally {
     src.delete()
     gray.delete()
     normalized.delete()
     denoised.delete()
     sharpened.delete()
-    binary.delete()
+    binaryOtsu.delete()
     adaptive.delete()
+    morphOtsu.delete()
+    morphAdaptive.delete()
   }
 }
 
@@ -102,6 +158,7 @@ export function buildProcessedImageFromCanvas(sourceCanvas: HTMLCanvasElement) {
     preprocessCanvasImage(tempCanvas)
   } catch (error) {
     console.error("OpenCV preprocessing failed:", error)
+    return sourceCanvas.toDataURL("image/png")
   }
 
   return tempCanvas.toDataURL("image/png")

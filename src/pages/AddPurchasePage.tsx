@@ -38,7 +38,6 @@ export default function AddPurchasePage() {
   const loadAllotmentForCurrentUser = useAllotmentStore(
     (state) => state.loadAllotmentForCurrentUser
   )
-  const setSetupMode = useAllotmentStore((state) => state.setSetupMode)
   const completeInitialSetup = useAllotmentStore(
     (state) => state.completeInitialSetup
   )
@@ -524,7 +523,6 @@ export default function AddPurchasePage() {
         })),
       })
 
-      await setSetupMode("purchases")
       await completeInitialSetup()
 
       resetForm()

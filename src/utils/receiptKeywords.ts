@@ -7,6 +7,8 @@ export const PRE_ROLL_KEYWORDS: string[] = [
   "infused preroll",
   "blunt",
   "cone",
+  "dogwalker",
+  "dog walker",
 ]
 
 export const EDIBLE_KEYWORDS: string[] = [
@@ -23,6 +25,10 @@ export const EDIBLE_KEYWORDS: string[] = [
   "troche",
   "drink",
   "beverage",
+  "syrup",
+  "tincture",
+  "capsule",
+  "tablet",
 ]
 
 export const VAPE_KEYWORDS: string[] = [
@@ -34,6 +40,9 @@ export const VAPE_KEYWORDS: string[] = [
   "distillate",
   "disty",
   "510",
+  "live cart",
+  "all in one",
+  "aio",
 ]
 
 export const CONCENTRATE_KEYWORDS: string[] = [
@@ -51,6 +60,8 @@ export const CONCENTRATE_KEYWORDS: string[] = [
   "diamonds",
   "crumble",
   "hash",
+  "bubble hash",
+  "hash rosin",
 ]
 
 export const FLOWER_KEYWORDS: string[] = [
@@ -60,6 +71,10 @@ export const FLOWER_KEYWORDS: string[] = [
   "bud",
   "whole flower",
   "ground flower",
+  "premium flower",
+  "indica",
+  "sativa",
+  "hybrid",
 ]
 
 export const COMMON_CANNABIS_SHORTHAND: string[] = [
@@ -98,6 +113,23 @@ export const PRODUCT_NAME_NOISE_WORDS: string[] = [
   "mastercard",
   "auth",
   "approval",
+  "register",
+  "cashier",
+  "patient",
+  "invoice",
+  "receipt",
+  "order",
+  "unit",
+  "price",
+  "batch",
+  "sku",
+  "barcode",
+  "loyalty",
+  "points",
+  "remaining",
+  "starting",
+  "allotment",
+  "weight",
 ]
 
 export const RECEIPT_JUNK_WORDS: string[] = [
@@ -122,6 +154,25 @@ export const RECEIPT_JUNK_WORDS: string[] = [
   "points",
   "phone",
   "www",
+  "register",
+  "drawer",
+  "terminal",
+  "batch",
+  "sku",
+  "barcode",
+  "customer copy",
+  "merchant copy",
+  "unit price",
+  "sales tax",
+  "state tax",
+  "payment",
+  "paid",
+  "change due",
+  "remaining allotment",
+  "starting allotment",
+  "total grams",
+  "total items",
+  "order number",
 ]
 
 export const DISPENSARY_BLACKLIST_WORDS: string[] = [
@@ -156,18 +207,28 @@ export const DISPENSARY_BLACKLIST_WORDS: string[] = [
   "batch",
   "register",
   "drawer",
+  "subtotal",
+  "payment",
+  "sales tax",
+  "state tax",
+  "remaining allotment",
+  "starting allotment",
+  "total grams",
+  "total items",
 ]
 
 export const DATE_PATTERN =
-  /\b(\d{1,2}\/\d{1,2}\/\d{2,4}|\d{4}-\d{1,2}-\d{1,2})\b/
+  /\b(\d{1,2}\/\d{1,2}\/\d{2,4}|\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\.\d{1,2}\.\d{2,4}|\d{4}\.\d{1,2}\.\d{1,2})\b/
 
 export const TIME_PATTERN =
   /\b(\d{1,2}:\d{2}\s?(?:AM|PM|am|pm)|\d{1,2}:\d{2})\b/
 
 export const PHONE_PATTERN = /\d{3}[-.)\s]\d{3}[-.\s]\d{4}/
 
-export const GRAMS_INLINE_TRAILING_PATTERN = /^(.*?)(\d+(?:\.\d+)?)\s?g\b/i
-export const GRAMS_INLINE_LEADING_PATTERN = /^(\d+(?:\.\d+)?)\s?g\b\s*(.*)$/i
+export const GRAMS_INLINE_TRAILING_PATTERN =
+  /^(.*?)(\d+(?:\.\d+)?)\s?g\b/i
+export const GRAMS_INLINE_LEADING_PATTERN =
+  /^(\d+(?:\.\d+)?)\s?g\b\s*(.*)$/i
 export const GRAMS_ONLY_PATTERN = /^(\d+(?:\.\d+)?)\s?g\b$/i
 export const MG_PATTERN = /\b\d+\s?mg\b/i
 
@@ -371,12 +432,22 @@ const DISPENSARY_SPECIAL_ALIASES: Record<string, string[]> = {
     "mary jane and herb s",
     "mary jane herbs",
   ],
-  "dabbs 1": ["dabbs1"],
-  "dabbs 2": ["dabbs2"],
+  "dabbs 1": [
+    "dabbs1",
+    "dabbs",
+  ],
+  "dabbs 2": [
+    "dabbs2",
+    "dabbs",
+  ],
   "firefly no 2": [
     "firefly 2",
     "firefly #2",
     "firefly cannabis 2",
+    "firefly",
+  ],
+  "firefly": [
+    "firefly cannabis",
   ],
   "local remedy": ["localremedy"],
   "merit creek": ["meritcreek"],
@@ -386,10 +457,26 @@ const DISPENSARY_SPECIAL_ALIASES: Record<string, string[]> = {
     "ms mudd one",
     "ms mudd",
   ],
+  "ms mudd 2": [
+    "msmudd 2",
+    "ms mudd",
+  ],
+  "ms mudd 3": [
+    "msmudd 3",
+    "ms mudd",
+  ],
+  "ms mudd 4": [
+    "msmudd 4",
+    "ms mudd",
+  ],
   "sb o springs": [
     "sb osprings",
     "sb ocean springs",
     "sb o springs",
+    "starbuds ocean springs",
+    "star buds ocean springs",
+    "starbuds",
+    "star buds",
   ],
   "strong river disp": [
     "strong river",
@@ -398,12 +485,38 @@ const DISPENSARY_SPECIAL_ALIASES: Record<string, string[]> = {
   "toke and tell 2": [
     "toke and tell dispensary 2",
   ],
+  "toke and tell": [
+    "toke tell",
+  ],
   "wyze 1": ["wyze1"],
   "wyze 3": ["wyze3"],
   "relief med": ["reliefmed"],
   "youngs farm": [
     "youngs farm medical",
     "youngs farm medical dispensary",
+  ],
+  "rootdown 1": ["rootdown"],
+  "rootdown 2": ["rootdown"],
+  "rootdown 3": ["rootdown"],
+  "rootdown 4": ["rootdown"],
+  "cultivated no 1": [
+    "cultivated wellness",
+    "cultivated",
+  ],
+  "cultivated no 2": [
+    "cultivated wellness",
+    "cultivated",
+  ],
+  "cultivated no 3": [
+    "cultivated wellness",
+    "cultivated",
+  ],
+  "the cannabis": [
+    "the cannabis company",
+    "cannabis company",
+  ],
+  "the herbalist": [
+    "herbalist",
   ],
 }
 
@@ -423,7 +536,10 @@ function stripDispensaryWords(value: string, words: readonly string[]) {
   let result = value
 
   for (const word of words) {
-    const pattern = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g")
+    const pattern = new RegExp(
+      `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+      "g"
+    )
     result = result.replace(pattern, " ")
   }
 
@@ -441,6 +557,15 @@ function buildDispensaryAliases(rawName: string) {
   if (withoutLegal) aliases.add(withoutLegal)
   if (withoutNoise) aliases.add(withoutNoise)
 
+  const tokens = withoutNoise.split(" ").filter(Boolean)
+  if (tokens.length >= 2) {
+    aliases.add(tokens.slice(0, 2).join(" "))
+  }
+
+  if (tokens.length >= 3) {
+    aliases.add(tokens.slice(0, 3).join(" "))
+  }
+
   const specialAliases = DISPENSARY_SPECIAL_ALIASES[withoutNoise] ?? []
   for (const alias of specialAliases) {
     const normalizedAlias = normalizeDispensaryName(alias)
@@ -452,8 +577,14 @@ function buildDispensaryAliases(rawName: string) {
 
 export const MISSISSIPPI_DISPENSARIES = MISSISSIPPI_DISPENSARY_NAMES_RAW.map((name) => {
   const normalized = normalizeDispensaryName(name)
-  const normalizedWithoutLegal = stripDispensaryWords(normalized, DISPENSARY_LEGAL_SUFFIXES)
-  const normalizedName = stripDispensaryWords(normalizedWithoutLegal, DISPENSARY_NOISE_WORDS)
+  const normalizedWithoutLegal = stripDispensaryWords(
+    normalized,
+    DISPENSARY_LEGAL_SUFFIXES
+  )
+  const normalizedName = stripDispensaryWords(
+    normalizedWithoutLegal,
+    DISPENSARY_NOISE_WORDS
+  )
 
   return {
     name,

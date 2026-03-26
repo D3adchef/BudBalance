@@ -11,6 +11,7 @@ export type UserAllotmentState = {
   setupMode: SetupMode
   hasCompletedInitialSetup: boolean
   correctedCurrentAllotment: number | null
+  correctedAllotmentAt: string | null
 }
 
 type AllotmentStore = {
@@ -32,6 +33,7 @@ type AllotmentRow = {
   setup_mode: string | null
   has_completed_initial_setup: boolean
   corrected_current_allotment: string | number | null
+  corrected_allotment_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -42,6 +44,7 @@ const DEFAULT_ALLOTMENT_STATE: UserAllotmentState = {
   setupMode: null,
   hasCompletedInitialSetup: false,
   correctedCurrentAllotment: null,
+  correctedAllotmentAt: null,
 }
 
 function normalizeSetupMode(raw: unknown): SetupMode {
@@ -62,6 +65,7 @@ function mapRowToAllotment(row: AllotmentRow): UserAllotmentState {
       row.corrected_current_allotment === null
         ? null
         : Number(row.corrected_current_allotment),
+    correctedAllotmentAt: row.corrected_allotment_at ?? null,
   }
 }
 
@@ -127,6 +131,7 @@ export const useAllotmentStore = create<AllotmentStore>((set, get) => ({
         has_completed_initial_setup: updatedAllotment.hasCompletedInitialSetup,
         corrected_current_allotment:
           updatedAllotment.correctedCurrentAllotment,
+        corrected_allotment_at: updatedAllotment.correctedAllotmentAt,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" }
@@ -159,6 +164,7 @@ export const useAllotmentStore = create<AllotmentStore>((set, get) => ({
     const updatedAllotment: UserAllotmentState = {
       ...get().allotment,
       correctedCurrentAllotment: safeGrams,
+      correctedAllotmentAt: new Date().toISOString(),
       hasCompletedInitialSetup: true,
     }
 
@@ -170,6 +176,7 @@ export const useAllotmentStore = create<AllotmentStore>((set, get) => ({
         setup_mode: updatedAllotment.setupMode,
         has_completed_initial_setup: true,
         corrected_current_allotment: safeGrams,
+        corrected_allotment_at: updatedAllotment.correctedAllotmentAt,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" }
@@ -190,6 +197,7 @@ export const useAllotmentStore = create<AllotmentStore>((set, get) => ({
     const updatedAllotment: UserAllotmentState = {
       ...get().allotment,
       correctedCurrentAllotment: null,
+      correctedAllotmentAt: null,
     }
 
     const { error } = await supabase.from("allotment_state").upsert(
@@ -200,6 +208,7 @@ export const useAllotmentStore = create<AllotmentStore>((set, get) => ({
         setup_mode: updatedAllotment.setupMode,
         has_completed_initial_setup: updatedAllotment.hasCompletedInitialSetup,
         corrected_current_allotment: null,
+        corrected_allotment_at: null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" }
@@ -231,6 +240,7 @@ export const useAllotmentStore = create<AllotmentStore>((set, get) => ({
         has_completed_initial_setup: updatedAllotment.hasCompletedInitialSetup,
         corrected_current_allotment:
           updatedAllotment.correctedCurrentAllotment,
+        corrected_allotment_at: updatedAllotment.correctedAllotmentAt,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" }
@@ -262,6 +272,7 @@ export const useAllotmentStore = create<AllotmentStore>((set, get) => ({
         has_completed_initial_setup: updatedAllotment.hasCompletedInitialSetup,
         corrected_current_allotment:
           updatedAllotment.correctedCurrentAllotment,
+        corrected_allotment_at: updatedAllotment.correctedAllotmentAt,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" }
@@ -291,6 +302,7 @@ export const useAllotmentStore = create<AllotmentStore>((set, get) => ({
         setup_mode: null,
         has_completed_initial_setup: false,
         corrected_current_allotment: null,
+        corrected_allotment_at: null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" }
