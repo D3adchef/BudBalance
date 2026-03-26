@@ -99,8 +99,7 @@ const NON_ITEM_LINE_PATTERN =
 const ITEM_BOUNDARY_PATTERN =
   /\b(batch|sku|unit price|price|employee|discount|register|cashier|patient|order|invoice|receipt)\b/i
 
-const ITEM_ID_PATTERN =
-  /^\d{8,}$/
+const ITEM_ID_PATTERN = /^\d{8,}$/
 
 const MERIDIEM_TIME_PATTERN =
   /\b\d{1,2}[:.;]\d{2}(?::\d{2})?\s*(?:AM|PM)\b/i
@@ -854,7 +853,7 @@ function scoreDispensaryCandidate(line: string, headerContext: string) {
   return bestMatch
 }
 
-function extractDispensary(headerLines: string[], rawText: string) {
+function extractDispensary(headerLines: string[]) {
   const likelyHeaderLines = headerLines.slice(0, 12)
   const headerContext = normalizeWhitespace(likelyHeaderLines.join(" "))
 
@@ -1276,7 +1275,7 @@ export function parseReceiptText(rawText: string): ParsedReceipt {
     zones.headerLines,
     rawText
   )
-  const dispensaryResult = extractDispensary(zones.headerLines, rawText)
+  const dispensaryResult = extractDispensary(zones.headerLines)
   const footerMetrics = extractFooterMetrics(zones.footerLines)
 
   let parsedItems = extractItemsFromItemZone(zones.itemLines, footerMetrics)
