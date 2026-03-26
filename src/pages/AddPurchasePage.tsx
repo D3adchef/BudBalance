@@ -625,16 +625,16 @@ export default function AddPurchasePage() {
               className="h-full w-full object-cover bg-black"
             />
 
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/45" />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/28 via-transparent to-black/35" />
 
             <div className="absolute left-3 top-3 z-10 flex items-center gap-2">
               <button
                 type="button"
                 onClick={stopCamera}
                 aria-label="Close camera"
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-red-500/40 bg-black/55 text-lg font-bold text-red-400 backdrop-blur transition hover:bg-red-500/15 active:scale-95"
+                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-red-400/35 bg-black/35 text-[22px] font-medium leading-none text-red-400 backdrop-blur-md transition active:scale-95"
               >
-                ✕
+                ×
               </button>
 
               {flashSupported && (
@@ -642,10 +642,10 @@ export default function AddPurchasePage() {
                   type="button"
                   onClick={toggleFlash}
                   aria-label={flashEnabled ? "Turn flash off" : "Turn flash on"}
-                  className={`flex h-10 min-w-[52px] items-center justify-center rounded-full border px-3 text-sm font-semibold backdrop-blur transition active:scale-95 ${
+                  className={`flex h-10 w-10 items-center justify-center rounded-2xl border text-[18px] leading-none backdrop-blur-md transition active:scale-95 ${
                     flashEnabled
-                      ? "border-amber-400/50 bg-amber-400/20 text-amber-200"
-                      : "border-white/20 bg-black/55 text-white hover:bg-white/10"
+                      ? "border-amber-400/40 bg-amber-400/12 text-amber-300"
+                      : "border-white/15 bg-black/35 text-white"
                   }`}
                 >
                   ⚡
@@ -653,34 +653,33 @@ export default function AddPurchasePage() {
               )}
             </div>
 
-            <div className="pointer-events-none absolute inset-x-0 top-16 z-10 px-4">
-              <div className="mx-auto max-w-sm rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-center shadow-lg shadow-black/30 backdrop-blur">
-                <p className="text-sm font-semibold text-white">
+            <div className="pointer-events-none absolute inset-x-0 top-16 z-10 px-5 text-center">
+              <div className="mx-auto max-w-xs">
+                <p className="text-[13px] font-semibold tracking-[0.01em] text-white/92 drop-shadow-[0_2px_8px_rgba(0,0,0,0.55)]">
                   Move closer until the text looks sharp
                 </p>
-                <p className="mt-1 text-xs text-slate-300">
-                  Fill most of the screen with the receipt. Avoid glare,
-                  shadows, and blurry text.
+                <p className="mt-1 text-[11px] leading-4 text-white/68 drop-shadow-[0_2px_8px_rgba(0,0,0,0.55)]">
+                  Fill the screen. Avoid glare and blur.
                 </p>
               </div>
             </div>
 
             {cameraError && (
-              <div className="absolute inset-x-0 bottom-28 z-10 px-4">
-                <p className="mx-auto max-w-sm rounded-2xl border border-red-900/60 bg-red-950/60 px-3 py-2 text-center text-sm text-red-300 backdrop-blur">
+              <div className="absolute inset-x-0 bottom-24 z-10 px-4">
+                <p className="mx-auto max-w-sm rounded-2xl border border-red-900/60 bg-red-950/55 px-3 py-2 text-center text-sm text-red-300 backdrop-blur">
                   {cameraError}
                 </p>
               </div>
             )}
 
-            <div className="absolute inset-x-0 bottom-6 z-10 flex justify-center px-6">
+            <div className="absolute inset-x-0 bottom-5 z-10 flex justify-center px-6">
               <button
                 type="button"
                 onClick={capturePhoto}
                 aria-label="Capture photo"
-                className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-white bg-white/10 shadow-[0_0_0_6px_rgba(0,0,0,0.25)] backdrop-blur transition hover:bg-white/20 active:scale-95"
+                className="flex h-[74px] w-[74px] items-center justify-center rounded-full border-[3px] border-white/95 bg-white/8 shadow-[0_0_0_5px_rgba(0,0,0,0.18)] backdrop-blur-sm transition active:scale-95"
               >
-                <span className="h-14 w-14 rounded-full bg-emerald-500 shadow-inner" />
+                <span className="h-[50px] w-[50px] rounded-full bg-emerald-500 shadow-inner" />
               </button>
             </div>
           </div>
