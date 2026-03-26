@@ -96,6 +96,15 @@ const FOOTER_HINT_PATTERN =
 const NON_ITEM_LINE_PATTERN =
   /\b(subtotal|total|tax|discount|payment|cash|debit|credit|change|loyalty|points|register|cashier|patient|order|invoice|receipt|sales tax|state tax|batch|sku|unit price|price|budtender|starting allotment|remaining allotment|total items|total grams|thank you|powered by)\b/i
 
+const ITEM_BOUNDARY_PATTERN =
+  /\b(batch|sku|unit price|price|employee|discount|register|cashier|patient|order|invoice|receipt)\b/i
+
+const ITEM_ID_PATTERN =
+  /^\d{8,}$/
+
+const MERIDIEM_TIME_PATTERN =
+  /\b\d{1,2}[:.;]\d{2}(?::\d{2})?\s*(?:AM|PM)\b/i
+
 type DispensaryMatch = {
   name: string
   normalizedName: string
@@ -116,6 +125,12 @@ type FooterMetrics = {
   startingAllotment: string
   remainingAllotment: string
   inferredUsedGrams: string
+}
+
+type ScoredTimeCandidate = {
+  raw: string
+  normalized: string
+  score: number
 }
 
 function normalizeWhitespace(value: string) {
@@ -173,12 +188,16 @@ function normalizeTimeCandidate(value: string) {
     cleaned = `${spacedMatch[1]}:${spacedMatch[2]} ${spacedMatch[3].toUpperCase()}`
   }
 
-  const noSpaceMeridiemMatch = cleaned.match(/^(\d{1,2}:\d{2}(?::\d{2})?)(AM|PM)$/i)
+  const noSpaceMeridiemMatch = cleaned.match(
+    /^(\d{1,2}:\d{2}(?::\d{2})?)(AM|PM)$/i
+  )
   if (noSpaceMeridiemMatch) {
     cleaned = `${noSpaceMeridiemMatch[1]} ${noSpaceMeridiemMatch[2].toUpperCase()}`
   }
 
-  const twentyFourHourPlusMeridiemMatch = cleaned.match(/^(\d{2}):(\d{2})\s*(AM|PM)$/i)
+  const twentyFourHourPlusMeridiemMatch = cleaned.match(
+    /^(\d{2}):(\d{2})\s*(AM|PM)$/i
+  )
   if (twentyFourHourPlusMeridiemMatch) {
     const hour = Number(twentyFourHourPlusMeridiemMatch[1])
     const minute = twentyFourHourPlusMeridiemMatch[2]
@@ -232,7 +251,10 @@ function splitReceiptIntoZones(lines: string[]): ReceiptZones {
   }
 
   const totalLines = lines.length
-  const fallbackHeaderCount = Math.min(Math.max(Math.ceil(totalLines * 0.25), 6), 12)
+  const fallbackHeaderCount = Math.min(
+    Math.max(Math.ceil(totalLines * 0.25), 6),
+    12
+  )
   const fallbackFooterStart = Math.max(
     totalLines - Math.min(Math.max(Math.ceil(totalLines * 0.25), 6), 12),
     fallbackHeaderCount
@@ -310,8 +332,7 @@ function getDateCandidatesFromText(value: string) {
     candidates.add(normalizeDateCandidate(match))
   }
 
-  const directDateMatches =
-    cleaned.match(new RegExp(DATE_PATTERN, "g")) || []
+  const directDateMatches = cleaned.match(new RegExp(DATE_PATTERN, "g")) || []
   for (const match of directDateMatches) {
     candidates.add(normalizeDateCandidate(match))
   }
@@ -321,45 +342,70 @@ function getDateCandidatesFromText(value: string) {
 
 function getTimeCandidatesFromText(value: string) {
   const cleaned = cleanOCRText(value)
-  const candidates = new Set<string>()
+  const candidates: ScoredTimeCandidate[] = []
+
+  const addCandidate = (raw: string, score: number) => {
+    const normalized = normalizeTimeCandidate(raw)
+    if (!normalized) return
+
+    const existing = candidates.find(
+      (candidate) => candidate.normalized === normalized
+    )
+
+    if (!existing) {
+      candidates.push({ raw, normalized, score })
+      return
+    }
+
+    if (score > existing.score) {
+      existing.score = score
+      existing.raw = raw
+    }
+  }
 
   const inlineMonthDateTimeMatch = cleaned.match(
     new RegExp(MONTH_NAME_DATE_WITH_AT_TIME_PATTERN, "i")
   )
   if (inlineMonthDateTimeMatch?.[0]) {
     const timeInside = inlineMonthDateTimeMatch[0].match(
-      /\d{1,2}[:.;]\d{2}(?:\s?(?:AM|PM|am|pm))?/i
+      /\d{1,2}[:.;]\d{2}(?::\d{2})?\s*(?:AM|PM|am|pm)?/i
     )?.[0]
     if (timeInside) {
-      candidates.add(normalizeTimeCandidate(timeInside))
+      addCandidate(timeInside, /\b(?:AM|PM)\b/i.test(timeInside) ? 10 : 7)
     }
   }
 
-  const flexMatches =
-    cleaned.match(new RegExp(OCR_FLEX_TIME_PATTERN, "gi")) || []
-  for (const match of flexMatches) {
-    candidates.add(normalizeTimeCandidate(match))
-  }
-
-  const standardMatches =
-    cleaned.match(new RegExp(TIME_WITH_OPTIONAL_SECONDS_PATTERN, "gi")) || []
-  for (const match of standardMatches) {
-    candidates.add(normalizeTimeCandidate(match))
+  const meridiemMatches =
+    cleaned.match(new RegExp(MERIDIEM_TIME_PATTERN, "gi")) || []
+  for (const match of meridiemMatches) {
+    addCandidate(match, 9)
   }
 
   const compactMatches =
     cleaned.match(new RegExp(COMPACT_TIME_WITH_MERIDIEM_PATTERN, "gi")) || []
   for (const match of compactMatches) {
-    candidates.add(normalizeTimeCandidate(match))
+    addCandidate(match, 8)
   }
 
   const spacedMatches =
     cleaned.match(new RegExp(SPACED_TIME_WITH_MERIDIEM_PATTERN, "gi")) || []
   for (const match of spacedMatches) {
-    candidates.add(normalizeTimeCandidate(match))
+    addCandidate(match, 8)
   }
 
-  return [...candidates]
+  const flexMatches =
+    cleaned.match(new RegExp(OCR_FLEX_TIME_PATTERN, "gi")) || []
+  for (const match of flexMatches) {
+    addCandidate(match, /\b(?:AM|PM)\b/i.test(match) ? 8 : 5)
+  }
+
+  const standardMatches =
+    cleaned.match(new RegExp(TIME_WITH_OPTIONAL_SECONDS_PATTERN, "gi")) || []
+  for (const match of standardMatches) {
+    addCandidate(match, /\b(?:AM|PM)\b/i.test(match) ? 8 : 4)
+  }
+
+  return candidates.sort((a, b) => b.score - a.score)
 }
 
 function buildPriorityDateTimeSources(headerLines: string[], rawText: string) {
@@ -482,7 +528,12 @@ export function normalizeTimeForInput(value: string) {
     const minute = weirdTwentyFourHourPlusMeridiem[2]
     const meridiem = weirdTwentyFourHourPlusMeridiem[3].toLowerCase()
 
-    if (hour >= 0 && hour <= 23 && Number(minute) >= 0 && Number(minute) <= 59) {
+    if (
+      hour >= 0 &&
+      hour <= 23 &&
+      Number(minute) >= 0 &&
+      Number(minute) <= 59
+    ) {
       if (hour > 12) {
         return `${String(hour).padStart(2, "0")}:${minute}`
       }
@@ -620,6 +671,7 @@ export function sanitizeScannedProductName(value: string) {
     .replace(/\s{2,}/g, " ")
     .replace(/[-•]+/g, " ")
     .replace(/\(\s*\)/g, "")
+    .replace(/^\.+\s*/, "")
     .trim()
 
   return cleaned
@@ -666,7 +718,7 @@ function extractDateAndTime(headerLines: string[], rawText: string) {
       const timeCandidates = getTimeCandidatesFromText(source)
 
       for (const candidate of timeCandidates) {
-        const normalized = normalizeTimeForInput(candidate)
+        const normalized = normalizeTimeForInput(candidate.normalized)
         if (normalized) {
           bestTime = normalized
           break
@@ -716,9 +768,9 @@ function isBlacklistedDispensaryLine(line: string) {
   )
 }
 
-function scoreDispensaryCandidate(line: string, fullText: string) {
+function scoreDispensaryCandidate(line: string, headerContext: string) {
   const normalizedLine = normalizeDispensaryName(line)
-  const normalizedText = normalizeDispensaryName(fullText)
+  const normalizedHeaderContext = normalizeDispensaryName(headerContext)
 
   let bestMatch: DispensaryMatch | null = null
 
@@ -730,23 +782,36 @@ function scoreDispensaryCandidate(line: string, fullText: string) {
       if (!alias) continue
 
       if (normalizedLine === alias) {
-        points = Math.max(points, 8)
+        points = Math.max(points, 10)
         if (!matchedBy.includes("exact-line-match")) {
           matchedBy.push("exact-line-match")
         }
       }
 
-      if (normalizedText.includes(alias)) {
-        points = Math.max(points, 6)
-        if (!matchedBy.includes("text-alias-match")) {
-          matchedBy.push("text-alias-match")
+      if (
+        normalizedLine.startsWith(alias) ||
+        alias.startsWith(normalizedLine)
+      ) {
+        points = Math.max(points, 8)
+        if (!matchedBy.includes("line-prefix-match")) {
+          matchedBy.push("line-prefix-match")
         }
       }
 
       if (normalizedLine.includes(alias) || alias.includes(normalizedLine)) {
-        points = Math.max(points, 5)
+        points = Math.max(points, 7)
         if (!matchedBy.includes("line-alias-overlap")) {
           matchedBy.push("line-alias-overlap")
+        }
+      }
+
+      if (
+        normalizedHeaderContext.includes(alias) &&
+        tokenize(alias).length >= 2
+      ) {
+        points = Math.max(points, 5)
+        if (!matchedBy.includes("header-context-match")) {
+          matchedBy.push("header-context-match")
         }
       }
     }
@@ -756,23 +821,23 @@ function scoreDispensaryCandidate(line: string, fullText: string) {
       dispensary.normalizedName
     )
     if (overlapWithLine >= 2) {
-      const overlapPoints = Math.min(4, overlapWithLine)
+      const overlapPoints = Math.min(6, overlapWithLine + 2)
       if (overlapPoints > points) {
         points = overlapPoints
       }
       matchedBy.push(`token-overlap-line:${overlapWithLine}`)
     }
 
-    const overlapWithText = getTokenOverlapScore(
-      normalizedText,
+    const overlapWithHeader = getTokenOverlapScore(
+      normalizedHeaderContext,
       dispensary.normalizedName
     )
-    if (overlapWithText >= 3) {
-      const overlapPoints = Math.min(5, overlapWithText)
+    if (overlapWithHeader >= 3) {
+      const overlapPoints = Math.min(5, overlapWithHeader)
       if (overlapPoints > points) {
         points = overlapPoints
       }
-      matchedBy.push(`token-overlap-text:${overlapWithText}`)
+      matchedBy.push(`token-overlap-header:${overlapWithHeader}`)
     }
 
     if (!bestMatch || points > bestMatch.points) {
@@ -790,14 +855,15 @@ function scoreDispensaryCandidate(line: string, fullText: string) {
 }
 
 function extractDispensary(headerLines: string[], rawText: string) {
-  const likelyHeaderLines = headerLines.slice(0, 16)
+  const likelyHeaderLines = headerLines.slice(0, 12)
+  const headerContext = normalizeWhitespace(likelyHeaderLines.join(" "))
 
   let bestMatch: DispensaryMatch | null = null
   let bestWeightedPoints = -1
 
   const candidateLines = [...likelyHeaderLines]
 
-  for (let index = 0; index < Math.min(6, likelyHeaderLines.length); index += 1) {
+  for (let index = 0; index < Math.min(5, likelyHeaderLines.length); index += 1) {
     const combined = normalizeWhitespace(
       [likelyHeaderLines[index], likelyHeaderLines[index + 1]]
         .filter(Boolean)
@@ -821,31 +887,36 @@ function extractDispensary(headerLines: string[], rawText: string) {
     if (isBlacklistedDispensaryLine(lower)) continue
     if (!/[a-z]/i.test(lower)) continue
 
-    const candidate = scoreDispensaryCandidate(line, rawText)
+    const candidate = scoreDispensaryCandidate(line, headerContext)
     if (!candidate) continue
 
     const isOriginalTopLine = index < likelyHeaderLines.length
     const headerBoost =
-      isOriginalTopLine && index <= 2
-        ? 3
-        : isOriginalTopLine && index <= 5
-          ? 2
-          : isOriginalTopLine && HEADER_HINT_PATTERN.test(line)
-            ? 1
+      isOriginalTopLine && index <= 1
+        ? 4
+        : isOriginalTopLine && index <= 3
+          ? 3
+          : isOriginalTopLine && index <= 5
+            ? 2
             : 0
 
-    const weightedPoints = candidate.points + headerBoost
+    const shortLineBoost =
+      normalizeDispensaryName(line).split(" ").length <= 5 ? 1 : 0
 
+    const weightedPoints = candidate.points + headerBoost + shortLineBoost
+
+    const weightedMatchedBy = [...candidate.matchedBy]
     if (headerBoost > 0) {
-      candidate.matchedBy = [
-        ...candidate.matchedBy,
-        `header-priority:+${headerBoost}`,
-      ]
+      weightedMatchedBy.push(`header-priority:+${headerBoost}`)
+    }
+    if (shortLineBoost > 0) {
+      weightedMatchedBy.push("short-header-line:+1")
     }
 
     if (!bestMatch || weightedPoints > bestWeightedPoints) {
       bestMatch = {
         ...candidate,
+        matchedBy: weightedMatchedBy,
         points: weightedPoints,
         confidence: getConfidenceFromPoints(weightedPoints),
       }
@@ -853,7 +924,7 @@ function extractDispensary(headerLines: string[], rawText: string) {
     }
   }
 
-  if (!bestMatch) {
+  if (!bestMatch || bestMatch.points < 4) {
     return {
       dispensary: "",
       dispensaryConfidence: "low" as const,
@@ -934,8 +1005,7 @@ function scoreItemLineCandidate(line: string, zoneWeight = 0) {
   if (TIME_PATTERN.test(line) || OCR_FLEX_TIME_PATTERN.test(line)) return -999
 
   if (/[a-z]/i.test(line)) points += 2
-  if (/[|]/.test(line)) points += 2
-  if (PAREN_GRAMS_PATTERN.test(line)) points += 4
+  if (PAREN_GRAMS_PATTERN.test(line)) points += 5
   if (LOOSE_GRAMS_PATTERN.test(line)) points += 4
   if (GRAMS_INLINE_LEADING_PATTERN.test(line)) points += 4
   if (GRAMS_INLINE_TRAILING_PATTERN.test(line)) points += 4
@@ -959,97 +1029,150 @@ function scoreItemLineCandidate(line: string, zoneWeight = 0) {
   return points
 }
 
-function parseSingleItemLine(currentLine: string, nextLine: string) {
-  const inlineTrailingMatch = currentLine.match(GRAMS_INLINE_TRAILING_PATTERN)
-  const inlineLeadingMatch = currentLine.match(GRAMS_INLINE_LEADING_PATTERN)
-  const parenGramsMatch = currentLine.match(PAREN_GRAMS_PATTERN)
-  const looseGramsMatch = currentLine.match(LOOSE_GRAMS_PATTERN)
+function extractBestGramsFromLine(line: string) {
+  const inlineTrailingMatch = line.match(GRAMS_INLINE_TRAILING_PATTERN)
+  if (inlineTrailingMatch?.[2]) return inlineTrailingMatch[2]
 
-  let grams = ""
-  let productName = ""
-  let consumedNext = false
+  const inlineLeadingMatch = line.match(GRAMS_INLINE_LEADING_PATTERN)
+  if (inlineLeadingMatch?.[1]) return inlineLeadingMatch[1]
 
-  if (inlineTrailingMatch) {
-    productName = sanitizeScannedProductName(inlineTrailingMatch[1] || "")
-    grams = inlineTrailingMatch[2] || ""
-  } else if (inlineLeadingMatch) {
-    grams = inlineLeadingMatch[1] || ""
-    productName = sanitizeScannedProductName(inlineLeadingMatch[2] || "")
-  } else if (parenGramsMatch) {
-    grams = parenGramsMatch[1] || ""
-    productName = sanitizeScannedProductName(
-      currentLine.replace(parenGramsMatch[0], "")
-    )
-  } else if (looseGramsMatch) {
-    grams = looseGramsMatch[1] || ""
-    productName = sanitizeScannedProductName(
-      currentLine.replace(looseGramsMatch[0], "")
-    )
-  } else {
-    const nextLineGramsMatch =
-      nextLine.match(GRAMS_ONLY_PATTERN) || nextLine.match(PAREN_GRAMS_PATTERN)
+  const parenGramsMatch = line.match(PAREN_GRAMS_PATTERN)
+  if (parenGramsMatch?.[1]) return parenGramsMatch[1]
 
-    const currentLineLooksLikeName =
-      /[a-z]/i.test(currentLine) &&
-      !looksLikeReceiptJunk(currentLine) &&
-      !looksLikeAddressLine(currentLine) &&
-      !looksLikeSummaryLine(currentLine) &&
-      !NON_ITEM_LINE_PATTERN.test(currentLine) &&
-      !/\b(am|pm)\b/i.test(currentLine) &&
-      !DATE_PATTERN.test(currentLine) &&
-      !MONTH_NAME_DATE_PATTERN.test(currentLine)
+  const looseGramsMatch = line.match(LOOSE_GRAMS_PATTERN)
+  if (looseGramsMatch?.[1]) return looseGramsMatch[1]
 
-    if (currentLineLooksLikeName && nextLineGramsMatch) {
-      productName = sanitizeScannedProductName(currentLine)
-      grams = nextLineGramsMatch[1] || ""
-      consumedNext = true
+  const gramsOnlyMatch = line.match(GRAMS_ONLY_PATTERN)
+  if (gramsOnlyMatch?.[1]) return gramsOnlyMatch[1]
+
+  return ""
+}
+
+function stripGramsFromLine(line: string) {
+  return sanitizeScannedProductName(
+    line
+      .replace(GRAMS_INLINE_TRAILING_PATTERN, "$1")
+      .replace(GRAMS_INLINE_LEADING_PATTERN, "$2")
+      .replace(PAREN_GRAMS_PATTERN, " ")
+      .replace(LOOSE_GRAMS_PATTERN, " ")
+      .replace(GRAMS_ONLY_PATTERN, " ")
+  )
+}
+
+function looksLikePossibleProductLine(line: string) {
+  const normalized = normalizeWhitespace(line)
+  if (!normalized) return false
+  if (!/[a-z]/i.test(normalized)) return false
+  if (looksLikeReceiptJunk(normalized)) return false
+  if (looksLikeAddressLine(normalized)) return false
+  if (looksLikeSummaryLine(normalized)) return false
+  if (PHONE_PATTERN.test(normalized)) return false
+  if (DATE_PATTERN.test(normalized)) return false
+  if (MONTH_NAME_DATE_PATTERN.test(normalized)) return false
+  if (TIME_PATTERN.test(normalized) || OCR_FLEX_TIME_PATTERN.test(normalized)) {
+    return false
+  }
+  if (ITEM_BOUNDARY_PATTERN.test(normalized)) return false
+  if (ITEM_ID_PATTERN.test(normalized)) return false
+  return true
+}
+
+function looksLikeContinuationLine(line: string) {
+  const normalized = normalizeWhitespace(line)
+  if (!looksLikePossibleProductLine(normalized)) return false
+  if (normalized.length < 2) return false
+  return true
+}
+
+function parseItemAroundLine(lines: string[], index: number, used: Set<number>) {
+  const currentLine = normalizeWhitespace(lines[index])
+  if (!looksLikePossibleProductLine(currentLine)) return null
+
+  const currentGrams = extractBestGramsFromLine(currentLine)
+  const currentScore = scoreItemLineCandidate(currentLine, 2)
+
+  if (!currentGrams && currentScore < 3) return null
+
+  const nameParts: string[] = []
+  let resolvedGrams = currentGrams
+
+  const prevLine = normalizeWhitespace(lines[index - 1] || "")
+  if (
+    index > 0 &&
+    !used.has(index - 1) &&
+    looksLikeContinuationLine(prevLine) &&
+    !extractBestGramsFromLine(prevLine)
+  ) {
+    const cleanedPrev = stripGramsFromLine(prevLine)
+    if (cleanedPrev) nameParts.push(cleanedPrev)
+  }
+
+  const currentCleaned = stripGramsFromLine(currentLine)
+  if (currentCleaned) nameParts.push(currentCleaned)
+
+  for (let offset = 1; offset <= 2; offset += 1) {
+    const nextIndex = index + offset
+    const nextLine = normalizeWhitespace(lines[nextIndex] || "")
+
+    if (!nextLine || used.has(nextIndex)) break
+    if (!looksLikeContinuationLine(nextLine)) break
+
+    const nextGrams = extractBestGramsFromLine(nextLine)
+    const cleanedNext = stripGramsFromLine(nextLine)
+
+    if (cleanedNext) {
+      nameParts.push(cleanedNext)
+    }
+
+    if (!resolvedGrams && nextGrams) {
+      resolvedGrams = nextGrams
+    }
+
+    if (nextGrams) {
+      used.add(nextIndex)
     }
   }
 
-  return { grams, productName, consumedNext }
-}
+  if (!resolvedGrams) return null
 
-function extractItemsFromItemZone(itemLines: string[], footerMetrics: FooterMetrics) {
-  const parsedItems: DraftItem[] = []
-  const seen = new Set<string>()
+  const numericGrams = Number(resolvedGrams)
+  if (Number.isNaN(numericGrams) || numericGrams <= 0 || numericGrams > 28) {
+    return null
+  }
 
-  for (let index = 0; index < itemLines.length; index += 1) {
-    const currentLine = normalizeWhitespace(itemLines[index])
-    const nextLine = normalizeWhitespace(itemLines[index + 1] || "")
+  const resolvedName = sanitizeScannedProductName(nameParts.join(" "))
+  if (!resolvedName || resolvedName.length < 2) return null
 
-    const currentScore = scoreItemLineCandidate(currentLine, 2)
-    const nextScore = scoreItemLineCandidate(nextLine, 1)
-
-    if (currentScore < 2) continue
-
-    const { grams, productName, consumedNext } = parseSingleItemLine(
-      currentLine,
-      nextLine
-    )
-
-    if (!grams) continue
-
-    const numericGrams = Number(grams)
-    if (Number.isNaN(numericGrams) || numericGrams <= 0 || numericGrams > 28) {
-      continue
-    }
-
-    const resolvedName = productName || "Scanned Item"
-    const key = `${resolvedName.toLowerCase()}|${grams}`
-
-    if (seen.has(key)) continue
-    seen.add(key)
-
-    parsedItems.push({
+  return {
+    item: {
       id: crypto.randomUUID(),
       productName: resolvedName,
       category: guessCategory(resolvedName),
-      grams,
-    })
+      grams: String(roundToTwo(numericGrams)),
+    },
+  }
+}
 
-    if (consumedNext && nextScore >= 0) {
-      index += 1
-    }
+function extractItemsFromItemZone(
+  itemLines: string[],
+  footerMetrics: FooterMetrics
+) {
+  const parsedItems: DraftItem[] = []
+  const seen = new Set<string>()
+  const used = new Set<number>()
+
+  for (let index = 0; index < itemLines.length; index += 1) {
+    if (used.has(index)) continue
+
+    const parsed = parseItemAroundLine(itemLines, index, used)
+    if (!parsed) continue
+
+    const key = `${parsed.item.productName.toLowerCase()}|${parsed.item.grams}`
+    if (seen.has(key)) continue
+
+    seen.add(key)
+    used.add(index)
+    parsedItems.push(parsed.item)
   }
 
   const footerItemCount = Number(footerMetrics.totalItems)
@@ -1067,43 +1190,20 @@ function extractItemsFromItemZone(itemLines: string[], footerMetrics: FooterMetr
 function extractItemsFromLines(lines: string[], footerMetrics: FooterMetrics) {
   const parsedItems: DraftItem[] = []
   const seen = new Set<string>()
+  const used = new Set<number>()
 
   for (let index = 0; index < lines.length; index += 1) {
-    const currentLine = normalizeWhitespace(lines[index])
-    const nextLine = normalizeWhitespace(lines[index + 1] || "")
+    if (used.has(index)) continue
 
-    if (!currentLine || looksLikeReceiptJunk(currentLine)) continue
-    if (looksLikeSummaryLine(currentLine)) continue
-    if (NON_ITEM_LINE_PATTERN.test(currentLine)) continue
+    const parsed = parseItemAroundLine(lines, index, used)
+    if (!parsed) continue
 
-    const { grams, productName, consumedNext } = parseSingleItemLine(
-      currentLine,
-      nextLine
-    )
-
-    if (!grams) continue
-
-    const numericGrams = Number(grams)
-    if (Number.isNaN(numericGrams) || numericGrams <= 0 || numericGrams > 28) {
-      continue
-    }
-
-    const resolvedName = productName || "Scanned Item"
-    const key = `${resolvedName.toLowerCase()}|${grams}`
-
+    const key = `${parsed.item.productName.toLowerCase()}|${parsed.item.grams}`
     if (seen.has(key)) continue
+
     seen.add(key)
-
-    parsedItems.push({
-      id: crypto.randomUUID(),
-      productName: resolvedName,
-      category: guessCategory(resolvedName),
-      grams,
-    })
-
-    if (consumedNext) {
-      index += 1
-    }
+    used.add(index)
+    parsedItems.push(parsed.item)
   }
 
   const footerItemCount = Number(footerMetrics.totalItems)
@@ -1125,7 +1225,14 @@ function resolveBestFallbackItemSet(
   if (parsedItems.length > 0) return parsedItems
 
   const footerTotal = Number(footerMetrics.totalGrams)
-  if (!Number.isNaN(footerTotal) && footerTotal > 0) {
+  const footerItemCount = Number(footerMetrics.totalItems)
+
+  if (
+    !Number.isNaN(footerTotal) &&
+    footerTotal > 0 &&
+    !Number.isNaN(footerItemCount) &&
+    footerItemCount === 1
+  ) {
     return [
       {
         id: crypto.randomUUID(),
@@ -1137,7 +1244,12 @@ function resolveBestFallbackItemSet(
   }
 
   const inferredUsed = Number(footerMetrics.inferredUsedGrams)
-  if (!Number.isNaN(inferredUsed) && inferredUsed > 0) {
+  if (
+    !Number.isNaN(inferredUsed) &&
+    inferredUsed > 0 &&
+    !Number.isNaN(footerItemCount) &&
+    footerItemCount === 1
+  ) {
     return [
       {
         id: crypto.randomUUID(),
