@@ -22,6 +22,19 @@ import {
 import { buildProcessedImageFromCanvas } from "../utils/receiptImageProcessing"
 import { getItemSummary } from "../utils/purchaseItemHelpers"
 
+type TorchTrackCapabilities = MediaTrackCapabilities & {
+  torch?: boolean
+}
+
+type TorchConstraintSet = MediaTrackConstraintSet & {
+  torch?: boolean
+}
+
+type TorchCapableTrack = MediaStreamTrack & {
+  getCapabilities?: () => TorchTrackCapabilities
+  applyConstraints?: (constraints: MediaTrackConstraints) => Promise<void>
+}
+
 export default function AddPurchasePage() {
   const addPurchase = usePurchaseStore((state) => state.addPurchase)
   const favoriteDispensaries = useFavoritesStore(
@@ -47,7 +60,8 @@ export default function AddPurchasePage() {
   const notesRef = useRef<HTMLTextAreaElement | null>(null)
 
   const [dispensary, setDispensary] = useState("")
-  const [selectedFavoriteDispensary, setSelectedFavoriteDispensary] = useState("")
+  const [selectedFavoriteDispensary, setSelectedFavoriteDispensary] =
+    useState("")
   const [notes, setNotes] = useState("")
   const [purchaseDate, setPurchaseDate] = useState("")
   const [purchaseHour, setPurchaseHour] = useState("")
@@ -68,6 +82,8 @@ export default function AddPurchasePage() {
     useState<ScanValidationResult | null>(null)
   const [saveMessage, setSaveMessage] = useState("")
   const [isSavingPurchase, setIsSavingPurchase] = useState(false)
+  const [flashSupported, setFlashSupported] = useState(false)
+  const [flashEnabled, setFlashEnabled] = useState(false)
 
   const purchaseTime = convertTo24HourTime(
     purchaseHour,
@@ -134,6 +150,57 @@ export default function AddPurchasePage() {
     }
   }, [cameraActive])
 
+  async function detectFlashSupport(mediaStream: MediaStream) {
+    const [track] = mediaStream.getVideoTracks()
+    if (!track) {
+      setFlashSupported(false)
+      setFlashEnabled(false)
+      return
+    }
+
+    const torchTrack = track as TorchCapableTrack
+
+    try {
+      const capabilities =
+        torchTrack.getCapabilities?.() as TorchTrackCapabilities | undefined
+      const supportsTorch = Boolean(capabilities?.torch)
+
+      setFlashSupported(supportsTorch)
+      if (!supportsTorch) {
+        setFlashEnabled(false)
+      }
+    } catch (error) {
+      console.error("Flash capability detection error:", error)
+      setFlashSupported(false)
+      setFlashEnabled(false)
+    }
+  }
+
+  async function setTorchEnabled(enabled: boolean) {
+    if (!stream) return
+
+    const [track] = stream.getVideoTracks()
+    if (!track) return
+
+    const torchTrack = track as TorchCapableTrack
+
+    try {
+      await torchTrack.applyConstraints?.({
+        advanced: [{ torch: enabled } as TorchConstraintSet],
+      })
+      setFlashEnabled(enabled)
+    } catch (error) {
+      console.error("Torch toggle error:", error)
+      setCameraError("Flash is not available on this camera or browser.")
+      setFlashSupported(false)
+      setFlashEnabled(false)
+    }
+  }
+
+  async function toggleFlash() {
+    await setTorchEnabled(!flashEnabled)
+  }
+
   function togglePurchaseDetails() {
     setIsPurchaseDetailsOpen((current) => !current)
   }
@@ -151,24 +218,29 @@ export default function AddPurchasePage() {
       setScanStatus("")
       setScanValidation(null)
       setSaveMessage("")
+      setFlashEnabled(false)
+      setFlashSupported(false)
 
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: "environment" },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
         },
         audio: false,
       })
 
       setStream(mediaStream)
       setCameraActive(true)
+      await detectFlashSupport(mediaStream)
     } catch (error) {
       console.error("Camera error:", error)
       setCameraError(
         "Unable to access the camera. You can still use Upload File instead."
       )
       setCameraActive(false)
+      setFlashEnabled(false)
+      setFlashSupported(false)
     }
   }
 
@@ -184,6 +256,8 @@ export default function AddPurchasePage() {
 
     setStream(null)
     setCameraActive(false)
+    setFlashEnabled(false)
+    setFlashSupported(false)
   }
 
   function capturePhoto() {
@@ -486,10 +560,7 @@ export default function AddPurchasePage() {
     let entryMode: "setup" | "manual" | "scan" | "historical" =
       source === "scan" ? "scan" : "manual"
 
-    if (
-      allotment.setupMode === "manual" &&
-      allotment.manualSetupCompletedAt
-    ) {
+    if (allotment.setupMode === "manual" && allotment.manualSetupCompletedAt) {
       const manualSetupDate = new Date(allotment.manualSetupCompletedAt)
 
       if (
@@ -571,28 +642,37 @@ export default function AddPurchasePage() {
                 autoPlay
                 playsInline
                 muted
-                className="h-full w-full object-cover"
+                className="h-full w-full object-contain bg-black"
               />
 
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6">
-                <div className="w-full max-w-md rounded-[2rem] border-2 border-emerald-400/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]">
-                  <div className="aspect-[3/4] w-full" />
-                </div>
-              </div>
-
               <div className="pointer-events-none absolute inset-x-0 top-4 px-4">
-                <div className="mx-auto max-w-md rounded-2xl bg-slate-950/75 px-4 py-3 text-center backdrop-blur">
+                <div className="mx-auto max-w-md rounded-2xl bg-slate-950/80 px-4 py-3 text-center backdrop-blur">
                   <p className="text-sm font-semibold text-white">
-                    Center the receipt in the frame
+                    Move closer until the text looks sharp
                   </p>
                   <p className="mt-1 text-xs text-slate-300">
-                    Try to keep the whole receipt visible and reduce glare.
+                    Fill most of the screen with the receipt. Avoid glare,
+                    shadows, and blurry text.
                   </p>
                 </div>
               </div>
 
               <div className="absolute inset-x-0 bottom-0 border-t border-white/10 bg-slate-950/90 px-4 pb-6 pt-4 backdrop-blur">
                 <div className="mx-auto max-w-md space-y-3">
+                  {flashSupported && (
+                    <button
+                      type="button"
+                      onClick={toggleFlash}
+                      className={`w-full rounded-2xl border px-4 py-3 text-sm font-semibold transition ${
+                        flashEnabled
+                          ? "border-amber-400/30 bg-amber-400/15 text-amber-200 hover:bg-amber-400/20"
+                          : "border-white/10 bg-white/5 text-white hover:bg-white/10"
+                      }`}
+                    >
+                      {flashEnabled ? "Flash On" : "Flash Off"}
+                    </button>
+                  )}
+
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
@@ -646,7 +726,9 @@ export default function AddPurchasePage() {
               <div>
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-semibold text-white">Smart Scan</h3>
+                    <h3 className="text-sm font-semibold text-white">
+                      Smart Scan
+                    </h3>
                     <p className="mt-1 text-xs leading-5 text-slate-400">
                       Use your camera or upload a receipt/package photo, then
                       confirm the details and line items below.
