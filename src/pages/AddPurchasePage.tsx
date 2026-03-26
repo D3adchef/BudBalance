@@ -616,88 +616,72 @@ export default function AddPurchasePage() {
 
       {cameraActive && (
         <div className="fixed inset-0 z-[90] bg-black">
-          <div className="flex h-full flex-col">
-            <div className="flex items-center justify-between border-b border-white/10 bg-slate-950/95 px-4 py-3">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
-                  Smart Scan
-                </p>
-                <h3 className="mt-1 text-sm font-semibold text-white">
-                  Capture Receipt
-                </h3>
-              </div>
+          <div className="relative h-full w-full overflow-hidden bg-black">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="h-full w-full object-cover bg-black"
+            />
 
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/45" />
+
+            <div className="absolute left-3 top-3 z-10 flex items-center gap-2">
               <button
                 type="button"
                 onClick={stopCamera}
-                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/10"
+                aria-label="Close camera"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-red-500/40 bg-black/55 text-lg font-bold text-red-400 backdrop-blur transition hover:bg-red-500/15 active:scale-95"
               >
-                Close
+                ✕
               </button>
+
+              {flashSupported && (
+                <button
+                  type="button"
+                  onClick={toggleFlash}
+                  aria-label={flashEnabled ? "Turn flash off" : "Turn flash on"}
+                  className={`flex h-10 min-w-[52px] items-center justify-center rounded-full border px-3 text-sm font-semibold backdrop-blur transition active:scale-95 ${
+                    flashEnabled
+                      ? "border-amber-400/50 bg-amber-400/20 text-amber-200"
+                      : "border-white/20 bg-black/55 text-white hover:bg-white/10"
+                  }`}
+                >
+                  ⚡
+                </button>
+              )}
             </div>
 
-            <div className="relative flex-1 overflow-hidden bg-black">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="h-full w-full object-contain bg-black"
-              />
-
-              <div className="pointer-events-none absolute inset-x-0 top-4 px-4">
-                <div className="mx-auto max-w-md rounded-2xl bg-slate-950/80 px-4 py-3 text-center backdrop-blur">
-                  <p className="text-sm font-semibold text-white">
-                    Move closer until the text looks sharp
-                  </p>
-                  <p className="mt-1 text-xs text-slate-300">
-                    Fill most of the screen with the receipt. Avoid glare,
-                    shadows, and blurry text.
-                  </p>
-                </div>
+            <div className="pointer-events-none absolute inset-x-0 top-16 z-10 px-4">
+              <div className="mx-auto max-w-sm rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-center shadow-lg shadow-black/30 backdrop-blur">
+                <p className="text-sm font-semibold text-white">
+                  Move closer until the text looks sharp
+                </p>
+                <p className="mt-1 text-xs text-slate-300">
+                  Fill most of the screen with the receipt. Avoid glare,
+                  shadows, and blurry text.
+                </p>
               </div>
+            </div>
 
-              <div className="absolute inset-x-0 bottom-0 border-t border-white/10 bg-slate-950/90 px-4 pb-6 pt-4 backdrop-blur">
-                <div className="mx-auto max-w-md space-y-3">
-                  {flashSupported && (
-                    <button
-                      type="button"
-                      onClick={toggleFlash}
-                      className={`w-full rounded-2xl border px-4 py-3 text-sm font-semibold transition ${
-                        flashEnabled
-                          ? "border-amber-400/30 bg-amber-400/15 text-amber-200 hover:bg-amber-400/20"
-                          : "border-white/10 bg-white/5 text-white hover:bg-white/10"
-                      }`}
-                    >
-                      {flashEnabled ? "Flash On" : "Flash Off"}
-                    </button>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={capturePhoto}
-                      className="rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
-                    >
-                      Capture
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={stopCamera}
-                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-white/10"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-
-                  {cameraError && (
-                    <p className="rounded-2xl border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-red-300">
-                      {cameraError}
-                    </p>
-                  )}
-                </div>
+            {cameraError && (
+              <div className="absolute inset-x-0 bottom-28 z-10 px-4">
+                <p className="mx-auto max-w-sm rounded-2xl border border-red-900/60 bg-red-950/60 px-3 py-2 text-center text-sm text-red-300 backdrop-blur">
+                  {cameraError}
+                </p>
               </div>
+            )}
+
+            <div className="absolute inset-x-0 bottom-6 z-10 flex justify-center px-6">
+              <button
+                type="button"
+                onClick={capturePhoto}
+                aria-label="Capture photo"
+                className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-white bg-white/10 shadow-[0_0_0_6px_rgba(0,0,0,0.25)] backdrop-blur transition hover:bg-white/20 active:scale-95"
+              >
+                <span className="h-14 w-14 rounded-full bg-emerald-500 shadow-inner" />
+              </button>
             </div>
           </div>
         </div>
