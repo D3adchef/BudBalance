@@ -572,7 +572,13 @@ export default function ToolsPage() {
   }
 
   function handleContactUs() {
-    window.location.href = "mailto:j.marquis504@proton.me"
+    window.location.href =
+      "mailto:budbalance@proton.me?subject=BudBalance Contact"
+  }
+
+  function handleReportIssueSuggestion() {
+    window.location.href =
+      "mailto:budbalance-feedback@proton.me?subject=BudBalance Issue or Suggestion"
   }
 
   return (
@@ -1095,7 +1101,7 @@ export default function ToolsPage() {
                     Questions about these Terms of Use may be sent to:
                   </p>
                   <p className="mt-1 text-emerald-300">
-                    j.marquis504@proton.me
+                    budbalance@proton.me
                   </p>
                 </section>
               </div>
@@ -1209,7 +1215,7 @@ export default function ToolsPage() {
                     Questions about this Privacy Policy may be sent to:
                   </p>
                   <p className="mt-1 text-emerald-300">
-                    j.marquis504@proton.me
+                    budbalance@proton.me
                   </p>
                 </section>
               </div>
@@ -1227,13 +1233,24 @@ export default function ToolsPage() {
               <p className="text-sm leading-6 text-slate-300">
                 Questions, feedback, or ideas?
               </p>
-              <button
-                type="button"
-                onClick={handleContactUs}
-                className="mt-3 inline-block rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
-              >
-                Contact Us
-              </button>
+
+              <div className="mt-3 grid gap-3">
+                <button
+                  type="button"
+                  onClick={handleContactUs}
+                  className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                >
+                  Contact Us
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleReportIssueSuggestion}
+                  className="rounded-2xl border border-white/10 bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
+                >
+                  Report an Issue / Suggestion
+                </button>
+              </div>
             </div>
           )}
         </div>
